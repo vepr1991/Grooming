@@ -1,0 +1,28 @@
+# --- Секреты (НИКОГДА НЕ ПУШИТЬ) ---
+.env
+.env.local
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# --- Node.js (Frontend) ---
+frontend/node_modules/
+frontend/dist/
+frontend/.output/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- OS ---
+.DS_Store
+.idea/
+.vscode/
+
+# --- Docker ---
+# Если вдруг docker создал локальные данные
+db_data/
