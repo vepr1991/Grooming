@@ -7,7 +7,6 @@ class MasterProfileUpdate(BaseModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     description: Optional[str] = None
-    map_link: Optional[str] = None
     avatar_url: Optional[str] = None
     photos: Optional[List[str]] = None
     timezone: Optional[str] = None

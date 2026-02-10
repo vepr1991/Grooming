@@ -13,7 +13,6 @@ export interface MasterProfile {
     telegram_id?: number;
     salon_name: string;
     address: string;
-    map_link?: string;  // [FIX] Добавили это поле (опциональное)
     phone: string;
     description: string;
     avatar_url: string;
