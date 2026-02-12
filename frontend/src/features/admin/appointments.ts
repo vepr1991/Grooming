@@ -221,7 +221,7 @@ function renderList() {
     filtered.forEach(a => list.appendChild(createCard(a)));
 }
 
-// [UPDATED] Карточка с поддержкой мульти-фото
+// [UPDATED] Карточка с поддержкой мульти-фото и новой галереи
 function createCard(a: Appointment): HTMLElement {
     const configs: any = {
         pending: { label: 'ОЖИДАЕТ', color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-l-orange-500' },
@@ -285,10 +285,10 @@ function createCard(a: Appointment): HTMLElement {
             iconBox.appendChild(countBadge);
         }
 
-        // Клик открывает лайтбокс с передачей всего массива
+        // Клик открывает новую галерею
         iconBox.onclick = (e) => {
             e.stopPropagation();
-            (window as any).openLightbox(photos, 0);
+            (window as any).openGallery(photos, 0); // Вызов новой функции
         };
     } else {
         // Стандартная иконка

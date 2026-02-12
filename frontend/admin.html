@@ -362,116 +362,124 @@
 
     <script type="module" src="./src/pages/admin.ts"></script>
 
-    <div id="lightbox" class="fixed inset-0 z-[300] bg-black/95 hidden flex flex-col items-center justify-center backdrop-blur-md animate-in fade-in duration-200 select-none">
+    <div id="gallery-modal" class="fixed inset-0 z-[300] bg-black/95 hidden flex items-center justify-center animate-in fade-in duration-300 select-none opacity-0 transition-opacity" aria-hidden="true">
 
-        <button onclick="closeLightbox()" class="absolute top-4 right-4 z-50 p-3 bg-black/50 hover:bg-red-600 text-white rounded-full transition-all backdrop-blur-md border border-white/20 active:scale-95">
-            <span class="material-symbols-outlined text-2xl font-bold block">close</span>
+        <button onclick="closeGallery()" class="absolute top-6 right-6 p-2 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors z-[310] backdrop-blur-md">
+            <span class="material-symbols-outlined text-[28px]">close</span>
         </button>
 
-        <div id="lb-counter" class="absolute top-6 left-1/2 -translate-x-1/2 text-white/80 font-bold text-sm bg-black/50 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
-            1 / 1
+        <div class="absolute inset-x-4 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none z-[310]">
+            <button id="gallery-prev" onclick="galleryPrev()" class="p-3 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 rounded-full transition-all pointer-events-auto backdrop-blur-sm active:scale-95">
+                <span class="material-symbols-outlined text-[32px]">chevron_left</span>
+            </button>
+            <button id="gallery-next" onclick="galleryNext()" class="p-3 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 rounded-full transition-all pointer-events-auto backdrop-blur-sm active:scale-95">
+                <span class="material-symbols-outlined text-[32px]">chevron_right</span>
+            </button>
         </div>
 
         <div class="relative w-full h-full flex items-center justify-center p-4">
+            <img
+                id="gallery-img"
+                src=""
+                alt="Gallery Image"
+                class="max-w-full max-h-full object-contain shadow-2xl transition-all duration-300 scale-95 opacity-0"
+            >
+        </div>
 
-            <button id="lb-prev" onclick="changeSlide(-1)" class="absolute left-2 z-40 p-4 text-white hover:text-primary transition-all disabled:opacity-0 disabled:pointer-events-none">
-                <span class="material-symbols-outlined text-5xl drop-shadow-lg">chevron_left</span>
-            </button>
-
-            <img id="lightbox-img" class="max-w-full max-h-[85vh] rounded-xl shadow-2xl transition-transform duration-300 scale-95 object-contain" src="">
-
-            <button id="lb-next" onclick="changeSlide(1)" class="absolute right-2 z-40 p-4 text-white hover:text-primary transition-all disabled:opacity-0 disabled:pointer-events-none">
-                <span class="material-symbols-outlined text-5xl drop-shadow-lg">chevron_right</span>
-            </button>
+        <div id="gallery-counter" class="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/60 text-sm font-medium bg-black/20 px-3 py-1 rounded-full backdrop-blur-md">
+            1 / 1
         </div>
     </div>
 
     <script>
-        // ЛОГИКА ГАЛЕРЕИ
-        let currentPhotos = [];
-        let currentIndex = 0;
+        // --- VANILLA JS GALLERY LOGIC ---
 
-        window.openLightbox = (photosOrUrl, index = 0) => {
-            const lb = document.getElementById('lightbox');
-            const img = document.getElementById('lightbox-img');
-
-            // Нормализация данных (строка или массив)
-            if (Array.isArray(photosOrUrl)) {
-                currentPhotos = photosOrUrl;
-            } else {
-                currentPhotos = [photosOrUrl];
-            }
-
-            currentIndex = index;
-            updateLightboxUI();
-
-            if (lb && img) {
-                lb.classList.remove('hidden');
-                setTimeout(() => img.classList.remove('scale-95'), 50);
-            }
+        const galleryState = {
+            images: [],
+            currentIndex: 0,
+            isOpen: false
         };
 
-        window.changeSlide = (step) => {
-            const newIndex = currentIndex + step;
-            if (newIndex >= 0 && newIndex < currentPhotos.length) {
-                currentIndex = newIndex;
-                const img = document.getElementById('lightbox-img');
+        const elModal = document.getElementById('gallery-modal');
+        const elImg = document.getElementById('gallery-img');
+        const elCounter = document.getElementById('gallery-counter');
 
-                // Анимация смены
-                img.style.opacity = '0.5';
-                img.style.transform = 'scale(0.95)';
+        window.openGallery = (photos, initialIndex = 0) => {
+            galleryState.images = Array.isArray(photos) ? photos : [photos];
+            galleryState.currentIndex = initialIndex;
+            galleryState.isOpen = true;
 
-                setTimeout(() => {
-                    updateLightboxUI();
-                    img.style.opacity = '1';
-                    img.style.transform = 'scale(1)';
-                }, 150);
-            }
+            elModal.classList.remove('hidden');
+            requestAnimationFrame(() => {
+                elModal.classList.remove('opacity-0');
+            });
+
+            updateGalleryUI();
+            document.addEventListener('keydown', handleGalleryKeydown);
         };
 
-        function updateLightboxUI() {
-            const img = document.getElementById('lightbox-img');
-            const counter = document.getElementById('lb-counter');
-            const prevBtn = document.getElementById('lb-prev');
-            const nextBtn = document.getElementById('lb-next');
+        window.closeGallery = () => {
+            galleryState.isOpen = false;
+            elModal.classList.add('opacity-0');
+            elImg.classList.add('scale-95', 'opacity-0');
 
-            if (img) img.src = currentPhotos[currentIndex];
-            if (counter) counter.textContent = `${currentIndex + 1} / ${currentPhotos.length}`;
+            setTimeout(() => {
+                elModal.classList.add('hidden');
+                elImg.src = '';
+                galleryState.images = [];
+            }, 300);
 
-            // Скрываем стрелки, если некуда листать
-            if (prevBtn) prevBtn.disabled = currentIndex === 0;
-            if (nextBtn) nextBtn.disabled = currentIndex === currentPhotos.length - 1;
+            document.removeEventListener('keydown', handleGalleryKeydown);
+        };
 
-            // Скрываем элементы навигации, если фото всего одно
-            if (currentPhotos.length <= 1) {
-                if (prevBtn) prevBtn.style.display = 'none';
-                if (nextBtn) nextBtn.style.display = 'none';
-                if (counter) counter.style.display = 'none';
-            } else {
-                if (prevBtn) prevBtn.style.display = 'block';
-                if (nextBtn) nextBtn.style.display = 'block';
-                if (counter) counter.style.display = 'block';
-            }
+        window.galleryNext = () => {
+            const { images, currentIndex } = galleryState;
+            galleryState.currentIndex = (currentIndex === images.length - 1) ? 0 : currentIndex + 1;
+            updateGalleryUI();
+        };
+
+        window.galleryPrev = () => {
+            const { images, currentIndex } = galleryState;
+            galleryState.currentIndex = (currentIndex === 0) ? images.length - 1 : currentIndex - 1;
+            updateGalleryUI();
+        };
+
+        function handleGalleryKeydown(e) {
+            if (!galleryState.isOpen) return;
+            if (e.key === 'Escape') closeGallery();
+            if (e.key === 'ArrowLeft') galleryPrev();
+            if (e.key === 'ArrowRight') galleryNext();
         }
 
-        window.closeLightbox = () => {
-            const lb = document.getElementById('lightbox');
-            const img = document.getElementById('lightbox-img');
-            if (lb && img) {
-                img.classList.add('scale-95');
-                setTimeout(() => {
-                    lb.classList.add('hidden');
-                    img.src = '';
-                    currentPhotos = [];
-                }, 200);
-            }
-        };
+        function updateGalleryUI() {
+            const { images, currentIndex } = galleryState;
 
-        // Закрытие по клику на фон
-        document.getElementById('lightbox').onclick = (e) => {
-            if (e.target.id === 'lightbox' || e.target.parentNode.id === 'lightbox') {
-                window.closeLightbox();
-            }
+            elImg.classList.add('opacity-50', 'scale-95');
+
+            setTimeout(() => {
+                elImg.src = images[currentIndex];
+                elCounter.textContent = `${currentIndex + 1} / ${images.length}`;
+
+                const prevBtn = document.getElementById('gallery-prev');
+                const nextBtn = document.getElementById('gallery-next');
+
+                if (images.length <= 1) {
+                    prevBtn.classList.add('hidden');
+                    nextBtn.classList.add('hidden');
+                } else {
+                    prevBtn.classList.remove('hidden');
+                    nextBtn.classList.remove('hidden');
+                }
+
+                elImg.onload = () => {
+                    elImg.classList.remove('opacity-50', 'scale-95', 'opacity-0');
+                    elImg.classList.add('scale-100', 'opacity-100');
+                };
+            }, 150);
+        }
+
+        elModal.onclick = (e) => {
+            if (e.target === elModal) closeGallery();
         };
     </script>
   </body>
