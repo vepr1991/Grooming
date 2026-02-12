@@ -20,10 +20,13 @@ export async function loadProfile() {
         const data = await apiFetch<{ user: any, profile: MasterProfile }>('/me');
         const p = data.profile;
 
-        // 1. ПРОВЕРКА РЕГИСТРАЦИИ (Самый высокий приоритет)
-        // Если названия салона нет или оно пустое — это новый мастер
+        // Скрываем лоадер, так как данные пришли
+        hide('app-loader');
+
+        // 1. ПРОВЕРКА РЕГИСТРАЦИИ (Если названия салона нет или оно пустое — это новый мастер)
         if (!p.salon_name || p.salon_name.trim() === '') {
             show('onboarding-screen');
+            hide('main-app'); // Гарантированно скрываем админку
             hide('approval-screen');
 
             // Подключаем маску для поля регистрации
@@ -36,12 +39,14 @@ export async function loadProfile() {
         // 2. ПРОВЕРКА ОДОБРЕНИЯ (Если регистрация пройдена)
         if (!p.is_approved) {
             show('approval-screen');
+            hide('main-app');
             hide('onboarding-screen');
             // Тоже останавливаем выполнение
             return;
         }
 
         // 3. ЕСЛИ ВСЁ ОК — ГРУЗИМ АДМИНКУ
+        show('main-app'); // <--- Показываем админку только сейчас
         hide('onboarding-screen');
         hide('approval-screen');
 

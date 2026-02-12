@@ -75,6 +75,10 @@
   </head>
   <body class="bg-background-dark font-display text-white antialiased selection:bg-primary/30">
 
+    <div id="app-loader" class="fixed inset-0 z-[200] bg-background-dark flex flex-col items-center justify-center">
+        <span class="material-symbols-outlined text-4xl text-primary animate-spin">progress_activity</span>
+    </div>
+
     <div id="onboarding-screen" class="fixed inset-0 z-[100] bg-background-dark flex flex-col items-center p-6 overflow-y-auto hidden">
         <div class="w-full max-w-md space-y-8 animate-in fade-in zoom-in duration-300 my-auto pb-10">
             <div class="text-center space-y-2">
@@ -104,7 +108,7 @@
         </div>
     </div>
 
-    <div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden max-w-md mx-auto border-x border-border-dark/20 shadow-2xl bg-background-dark">
+    <div id="main-app" class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden max-w-md mx-auto border-x border-border-dark/20 shadow-2xl bg-background-dark hidden">
 
       <div class="sticky top-0 z-20 bg-background-dark/95 backdrop-blur-sm border-b border-border-dark">
         <div class="flex items-center p-4 pb-2 justify-between">
