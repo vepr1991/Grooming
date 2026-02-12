@@ -35,7 +35,8 @@ function closeBooking() {
 
 (window as any).goBack = closeBooking;
 
-export function setupBooking(mId: string, tz: string, isPremium: boolean = false) {
+// [FIX] Добавил _, чтобы TS не ругался на неиспользуемую переменную
+export function setupBooking(mId: string, tz: string, _isPremium: boolean = false) {
     masterId = mId;
     masterTimezone = tz || 'Asia/Almaty';
 
@@ -91,7 +92,6 @@ function selectDate(dateStr: string) {
     const days = document.querySelectorAll('.day-cell');
     days.forEach(d => {
         d.classList.remove('selected');
-        // Логика подсветки реализована внутри renderCalendar, но при клике обновляем:
         renderCalendar();
     });
 
@@ -151,15 +151,12 @@ async function loadSlots(date: string) {
         slots.forEach((isoTime) => {
             const time = new Date(isoTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: masterTimezone });
 
-            // Стилизация кнопок времени
             const btn = createEl('button', 'py-2 px-1 bg-surface border border-border rounded-xl text-white font-bold text-sm hover:border-primary focus:bg-primary focus:border-primary transition-all', time);
 
             btn.onclick = () => {
-                // Снимаем выделение с других
                 Array.from(grid.children).forEach(child => {
                     child.className = 'py-2 px-1 bg-surface border border-border rounded-xl text-white font-bold text-sm hover:border-primary transition-all';
                 });
-                // Выделяем текущую
                 btn.className = 'py-2 px-1 bg-primary border-primary rounded-xl text-white font-bold text-sm shadow-lg ring-2 ring-primary/30';
 
                 selectedSlot = isoTime;
@@ -174,7 +171,6 @@ async function loadSlots(date: string) {
 
 function showBookingForm() {
     show('booking-form');
-    // Плавный скролл к форме
     setTimeout(() => {
         const form = document.getElementById('booking-form');
         if(form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -208,19 +204,16 @@ async function submitBooking() {
     Telegram.WebApp.MainButton.showProgress();
 
     try {
-        // 1. Проверяем, есть ли фото и конвертируем его
         let photoBase64 = null;
         const photoInput = $('inp-pet-photo') as HTMLInputElement;
         if (photoInput && photoInput.files && photoInput.files[0]) {
             try {
-                // Конвертируем в Base64 (строку)
                 photoBase64 = await fileToBase64(photoInput.files[0]);
             } catch (e) {
                 console.error("Ошибка обработки фото", e);
             }
         }
 
-        // 2. Формируем данные
         const payload = {
             master_telegram_id: parseInt(masterId),
             service_id: selectedService!.id,
@@ -231,11 +224,10 @@ async function submitBooking() {
             pet_name: getVal('inp-pet-name').trim(),
             pet_breed: getVal('inp-pet-breed').trim() || null,
             comment: getVal('inp-comment').trim() || null,
-            // Добавляем поле с фото (Backend должен его обработать)
+            // [FIX] Переименовали, чтобы совпадало с бэкендом
             pet_photo_base64: photoBase64
         };
 
-        // 3. Отправляем
         await apiFetch('/appointments', { method: 'POST', body: JSON.stringify(payload) });
 
         if (selectedSlot) {
