@@ -368,17 +368,17 @@
 
     <div id="gallery-modal" class="fixed inset-0 z-[9999] bg-black/95 hidden flex items-center justify-center animate-in fade-in duration-300 select-none opacity-0 transition-opacity" aria-hidden="true">
 
-        <button onclick="closeGallery()" class="absolute safe-top-padding right-6 z-[10000] p-2 bg-black/50 hover:bg-black/80 text-white rounded-full backdrop-blur-md transition-all shadow-lg active:scale-90 flex items-center justify-center border border-white/10">
-            <span class="material-symbols-outlined text-[28px] font-bold">close</span>
+        <button onclick="closeGallery()" class="absolute safe-top-padding right-6 z-[10000] p-3 bg-white text-black rounded-full shadow-2xl active:scale-90 flex items-center justify-center transition-transform">
+            <span class="material-symbols-outlined text-[24px] font-black">close</span>
         </button>
 
         <div class="absolute inset-x-4 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none z-[10000]">
-            <button id="gallery-prev" onclick="galleryPrev()" class="p-2 bg-black/50 hover:bg-black/80 text-white rounded-full backdrop-blur-md transition-all pointer-events-auto shadow-lg active:scale-90 flex items-center justify-center border border-white/10">
-                <span class="material-symbols-outlined text-[24px]">chevron_left</span>
+            <button id="gallery-prev" onclick="galleryPrev()" class="p-3 bg-white/20 hover:bg-white text-white hover:text-black rounded-full backdrop-blur-md transition-all pointer-events-auto shadow-lg active:scale-90 flex items-center justify-center">
+                <span class="material-symbols-outlined text-[28px]">chevron_left</span>
             </button>
 
-            <button id="gallery-next" onclick="galleryNext()" class="p-2 bg-black/50 hover:bg-black/80 text-white rounded-full backdrop-blur-md transition-all pointer-events-auto shadow-lg active:scale-90 flex items-center justify-center border border-white/10">
-                <span class="material-symbols-outlined text-[24px]">chevron_right</span>
+            <button id="gallery-next" onclick="galleryNext()" class="p-3 bg-white/20 hover:bg-white text-white hover:text-black rounded-full backdrop-blur-md transition-all pointer-events-auto shadow-lg active:scale-90 flex items-center justify-center">
+                <span class="material-symbols-outlined text-[28px]">chevron_right</span>
             </button>
         </div>
 
@@ -395,7 +395,7 @@
             >
         </div>
 
-        <div id="gallery-counter" class="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/90 text-sm font-bold bg-black/50 px-3 py-1.5 rounded-full backdrop-blur-md z-[10000] border border-white/10">
+        <div id="gallery-counter" class="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/90 text-sm font-bold bg-black/60 px-3 py-1.5 rounded-full backdrop-blur-md z-[10000] border border-white/10">
             1 / 1
         </div>
     </div>
@@ -488,6 +488,7 @@
             };
         }
 
+        // Close only if clicking BACKGROUND, not buttons
         elModal.onclick = (e) => {
             if (e.target === elModal) closeGallery();
         };
