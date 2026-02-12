@@ -78,3 +78,5 @@ ON appointments (master_telegram_id, starts_at)
 WHERE status != 'cancelled';
 
 ALTER TABLE masters ADD COLUMN is_approved BOOLEAN DEFAULT FALSE;
+ALTER TABLE appointments
+ADD COLUMN pet_photos JSONB DEFAULT '[]'::jsonb;

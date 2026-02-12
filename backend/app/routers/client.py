@@ -1,4 +1,6 @@
 # (c) 2026 Владимир Коваленко. Все права защищены.
+import base64
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File
 from datetime import datetime, timedelta
 import pytz
@@ -274,16 +276,51 @@ async def send_new_appointment_notification(new_appt: dict):
 
 
 @router.post("/appointments")
-# [FIX] Используем get_current_user вместо validate_telegram_data
 async def create_appointment_public(
         app_data: AppointmentCreate,
         background_tasks: BackgroundTasks,
         user=Depends(get_current_user)
 ):
+    # --- ЛОГИКА ОБРАБОТКИ ФОТО ---
+    if app_data.pet_photo_base64:
+        try:
+            # 1. Очищаем заголовок base64 (data:image/jpeg;base64,...)
+            if "," in app_data.pet_photo_base64:
+                header, encoded = app_data.pet_photo_base64.split(",", 1)
+            else:
+                encoded = app_data.pet_photo_base64
+
+            # 2. Декодируем
+            file_content = base64.b64decode(encoded)
+
+            # 3. Генерируем путь
+            file_path = f"appointments/{user['id']}/{uuid.uuid4()}.jpg"
+            bucket_name = "avatars"  # Или создайте бакет 'appointments'
+
+            # 4. Загружаем в Supabase
+            supabase.storage.from_(bucket_name).upload(
+                path=file_path,
+                file=file_content,
+                file_options={"content-type": "image/jpeg", "upsert": "true"}
+            )
+
+            # 5. Получаем публичную ссылку
+            public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
+
+            # 6. Добавляем в список фото для сохранения в БД
+            app_data.pet_photos = [public_url]
+
+        except Exception as e:
+            print(f"Error processing client photo: {e}")
+            # Не прерываем запись, если фото не загрузилось, просто идем дальше
+            pass
+    # -----------------------------
+
     new_appt = await AppointmentService.create(
         data=app_data,
         client_id=user['id'],
         client_username=user.get('username')
     )
+
     background_tasks.add_task(send_new_appointment_notification, new_appt)
     return new_appt

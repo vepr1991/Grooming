@@ -1,5 +1,5 @@
 from pydantic import BaseModel, field_validator
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 import re
 
@@ -15,13 +15,20 @@ class AppointmentCreate(BaseModel):
 
     pet_name: str
     pet_breed: Optional[str] = None
-    pet_photos: List[str] = []  # [FIX] Добавлено поле для фото
-    comment: Optional[str] = None
 
+    # Поле для приема "сырой" картинки от клиента (Base64)
+    pet_photo_base64: Optional[str] = None
+
+    # Поле для сохранения в БД (список ссылок)
+    pet_photos: List[str] = []
+
+    comment: Optional[str] = None
     idempotency_key: Optional[str] = None
 
     @field_validator('client_phone')
     def validate_phone(cls, v):
-        if not re.match(r'^[\d\+\(\)\-\s]{10,20}$', v):
+        # Простая очистка и проверка
+        clean = re.sub(r'\D', '', v)
+        if len(clean) < 10:
             raise ValueError('Некорректный формат телефона')
         return v

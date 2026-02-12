@@ -232,7 +232,7 @@ async function submitBooking() {
             pet_breed: getVal('inp-pet-breed').trim() || null,
             comment: getVal('inp-comment').trim() || null,
             // Добавляем поле с фото (Backend должен его обработать)
-            pet_photo: photoBase64
+            pet_photo_base64: photoBase64
         };
 
         // 3. Отправляем
