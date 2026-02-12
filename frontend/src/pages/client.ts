@@ -139,8 +139,7 @@ async function init() {
         if (nameInput) nameInput.value = `${user.first_name} ${user.last_name || ''}`.trim();
     }
 
-    // Инициализация загрузки фото
-    initPhotoUpload();
+    // [FIX] Удалили initPhotoUpload(), теперь логика только в booking.ts
 
     // 1. Загружаем профиль
     loadedProfile = await loadMasterInfo(masterId);
@@ -165,49 +164,6 @@ async function init() {
     // Глобальные хендлеры
     (window as any).openLegal = openLegal;
     (window as any).closeLegal = closeLegal;
-}
-
-// --- НОВАЯ ФУНКЦИЯ: ЛОГИКА ЗАГРУЗКИ ФОТО ---
-function initPhotoUpload() {
-    const input = $('inp-pet-photo') as HTMLInputElement;
-    const previewBox = $('photo-preview-box');
-    const previewImg = $('photo-preview-img') as HTMLImageElement;
-    const removeBtn = $('btn-remove-photo');
-    // Находим label, который является кнопкой загрузки (родитель инпута или сосед)
-    // В нашем HTML input находится ВНУТРИ label
-    const uploadLabel = input?.closest('label');
-
-    if (!input || !previewBox || !previewImg || !removeBtn || !uploadLabel) return;
-
-    // Обработка выбора файла
-    input.onchange = () => {
-        const file = input.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                // Устанавливаем картинку
-                previewImg.src = e.target?.result as string;
-                // Скрываем кнопку загрузки, показываем превью
-                uploadLabel.classList.add('hidden');
-                previewBox.classList.remove('hidden');
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    // Обработка удаления файла
-    removeBtn.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        // Очищаем инпут
-        input.value = '';
-        previewImg.src = '';
-
-        // Показываем кнопку загрузки обратно, скрываем превью
-        uploadLabel.classList.remove('hidden');
-        previewBox.classList.add('hidden');
-    };
 }
 
 // --- ФУНКЦИИ ИНТЕРФЕЙСА ---

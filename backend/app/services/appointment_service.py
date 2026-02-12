@@ -4,6 +4,7 @@ from app.schemas.appointment import AppointmentCreate
 import uuid
 from datetime import datetime, timezone
 
+
 class AppointmentService:
     @staticmethod
     async def create(data: AppointmentCreate, client_id: int, client_username: str = None):
@@ -12,16 +13,14 @@ class AppointmentService:
         """
         # 1. Получаем данные
         appt_dict = data.model_dump()
-        
-        # --- FIX: Валидация времени (нельзя в прошлое) ---
+
+        # Валидация времени
         booking_time = data.starts_at
-        # Приводим к UTC для корректного сравнения
         if booking_time.tzinfo is None:
-             booking_time = booking_time.replace(tzinfo=timezone.utc)
-        
+            booking_time = booking_time.replace(tzinfo=timezone.utc)
+
         if booking_time < datetime.now(timezone.utc):
-             raise HTTPException(status_code=400, detail="Нельзя записаться на прошедшее время")
-        # -------------------------------------------------
+            raise HTTPException(status_code=400, detail="Нельзя записаться на прошедшее время")
 
         # 2. Формируем объект для вставки
         insert_data = {
@@ -34,6 +33,11 @@ class AppointmentService:
             "pet_name": appt_dict['pet_name'],
             "pet_breed": appt_dict.get('pet_breed'),
             "comment": appt_dict.get('comment'),
+
+            # [FIX] Добавили сохранение фото!
+            # Если фото нет, записываем пустой массив jsonb '[]'
+            "pet_photos": appt_dict.get('pet_photos', []),
+
             "starts_at": appt_dict['starts_at'].isoformat(),
             "status": "pending",
             "idempotency_key": appt_dict.get('idempotency_key') or str(uuid.uuid4())
@@ -48,7 +52,7 @@ class AppointmentService:
         if not service_check.data:
             raise HTTPException(status_code=400, detail="Услуга не найдена или не принадлежит этому мастеру")
 
-        # 4. Вставка в БД с обработкой дублей
+        # 4. Вставка в БД
         try:
             res = supabase.table("appointments").insert(insert_data).execute()
             if res.data:
@@ -57,6 +61,6 @@ class AppointmentService:
             error_str = str(e).lower()
             if "duplicate key" in error_str or "23505" in error_str:
                 raise HTTPException(status_code=409, detail="Извините, это время уже занято")
-            
+
             print(f"Database Error: {e}")
             raise HTTPException(status_code=500, detail="Ошибка сохранения записи")
