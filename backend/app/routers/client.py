@@ -281,39 +281,42 @@ async def create_appointment_public(
         background_tasks: BackgroundTasks,
         user=Depends(get_current_user)
 ):
-    # --- ЛОГИКА ОБРАБОТКИ ФОТО ---
-    if app_data.pet_photo_base64:
-        try:
-            # 1. Очищаем заголовок base64 (data:image/jpeg;base64,...)
-            if "," in app_data.pet_photo_base64:
-                header, encoded = app_data.pet_photo_base64.split(",", 1)
-            else:
-                encoded = app_data.pet_photo_base64
+    saved_urls = []
 
-            # 2. Декодируем
-            file_content = base64.b64decode(encoded)
+    # --- ЛОГИКА ОБРАБОТКИ ФОТО (МАССИВ) ---
+    if app_data.pet_photos_base64:
+        bucket_name = "avatars"  # Убедитесь, что бакет существует в Supabase
 
-            # 3. Генерируем путь
-            file_path = f"appointments/{user['id']}/{uuid.uuid4()}.jpg"
-            bucket_name = "avatars"  # Или создайте бакет 'appointments'
+        for idx, b64_str in enumerate(app_data.pet_photos_base64):
+            try:
+                # 1. Очищаем заголовок base64
+                if "," in b64_str:
+                    _, encoded = b64_str.split(",", 1)
+                else:
+                    encoded = b64_str
 
-            # 4. Загружаем в Supabase
-            supabase.storage.from_(bucket_name).upload(
-                path=file_path,
-                file=file_content,
-                file_options={"content-type": "image/jpeg", "upsert": "true"}
-            )
+                # 2. Декодируем
+                file_content = base64.b64decode(encoded)
 
-            # 5. Получаем публичную ссылку
-            public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
+                # 3. Генерируем путь
+                file_path = f"appointments/{user['id']}/{uuid.uuid4()}.jpg"
 
-            # 6. Добавляем в список фото для сохранения в БД
-            app_data.pet_photos = [public_url]
+                # 4. Загружаем в Supabase
+                supabase.storage.from_(bucket_name).upload(
+                    path=file_path,
+                    file=file_content,
+                    file_options={"content-type": "image/jpeg", "upsert": "true"}
+                )
 
-        except Exception as e:
-            print(f"Error processing client photo: {e}")
-            # Не прерываем запись, если фото не загрузилось, просто идем дальше
-            pass
+                # 5. Получаем ссылку
+                public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
+                saved_urls.append(public_url)
+
+            except Exception as e:
+                print(f"Error processing photo #{idx}: {e}")
+
+    # Сохраняем итоговый список ссылок в модель для БД
+    app_data.pet_photos = saved_urls
     # -----------------------------
 
     new_appt = await AppointmentService.create(

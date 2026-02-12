@@ -141,23 +141,20 @@
                     <input type="text" id="inp-pet-breed" class="w-full bg-surface-dark border-2 border-border-dark focus:border-primary rounded-xl p-4 text-white font-bold outline-none transition-all placeholder-text-secondary/30" placeholder="Например: Корги">
                 </div>
 
-                <div class="group" id="photo-upload-container">
-                    <label class="block text-xs font-bold text-text-secondary mb-1.5 ml-1">ФОТО ПИТОМЦА (Опционально)</label>
-                    <div class="flex items-start gap-3">
-                         <label class="flex-1 cursor-pointer bg-surface-dark border-2 border-dashed border-border-dark hover:border-primary rounded-xl p-4 flex flex-col items-center justify-center gap-2 transition-all group-hover:bg-surface-dark/80 h-[84px]">
-                            <span class="material-symbols-rounded text-2xl text-primary">add_a_photo</span>
-                            <span class="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Добавить фото</span>
-                            <input type="file" id="inp-pet-photo" accept="image/*" class="hidden">
-                        </label>
+<div class="group" id="photo-upload-container">
+    <label class="block text-xs font-bold text-text-secondary mb-1.5 ml-1">ФОТО ПИТОМЦА (Опционально)</label>
 
-                        <div id="photo-preview-box" class="hidden relative w-[84px] h-[84px] flex-shrink-0 rounded-xl overflow-hidden border-2 border-border-dark shadow-md">
-                            <img id="photo-preview-img" src="" alt="Preview" class="w-full h-full object-cover">
-                            <button id="btn-remove-photo" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-black/60 hover:bg-red-500 text-white transition-colors backdrop-blur-sm rounded-bl-lg">
-                                <span class="material-symbols-rounded text-xs font-bold">close</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
+    <div class="space-y-3">
+        <div id="photo-preview-track" class="hidden flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+            </div>
+
+        <label class="cursor-pointer bg-surface-dark border-2 border-dashed border-border-dark hover:border-primary rounded-xl p-3 flex items-center justify-center gap-2 transition-all group-hover:bg-surface-dark/80 h-14 w-full active:scale-[0.98]">
+            <span class="material-symbols-rounded text-xl text-primary">add_a_photo</span>
+            <span class="text-xs font-bold text-text-secondary uppercase tracking-wider">Добавить фото</span>
+            <input type="file" id="inp-pet-photo" accept="image/*" multiple class="hidden">
+        </label>
+    </div>
+</div>
                 <div class="group">
                     <label class="block text-xs font-bold text-text-secondary mb-1.5 ml-1">КОММЕНТАРИЙ</label>
                     <textarea id="inp-comment" rows="2" class="w-full bg-surface-dark border-2 border-border-dark focus:border-primary rounded-xl p-4 text-white font-bold outline-none transition-all placeholder-text-secondary/30 resize-none" placeholder="Особенности, пожелания..."></textarea>

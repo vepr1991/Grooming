@@ -9,7 +9,10 @@ let selectedDate: string | null = null;
 let selectedSlot: string | null = null;
 let masterId: string = '';
 let masterTimezone = 'Asia/Almaty';
-let isMasterPremium = false; // [FIX] Добавили переменную для хранения статуса
+let isMasterPremium = false;
+
+// Храним выбранные файлы (массив строк base64)
+let uploadedPhotosBase64: string[] = [];
 
 // Calendar state
 let viewDate = new Date();
@@ -36,18 +39,98 @@ function closeBooking() {
 
 (window as any).goBack = closeBooking;
 
-// [FIX] Используем isPremium нормально
 export function setupBooking(mId: string, tz: string, isPremium: boolean = false) {
     masterId = mId;
     masterTimezone = tz || 'Asia/Almaty';
-    isMasterPremium = isPremium; // Сохраняем статус
+    isMasterPremium = isPremium;
 
     const prevBtn = $('btn-prev-month');
     const nextBtn = $('btn-next-month');
 
     if (prevBtn) prevBtn.onclick = () => { viewDate.setMonth(viewDate.getMonth() - 1); renderCalendar(); };
     if (nextBtn) nextBtn.onclick = () => { viewDate.setMonth(viewDate.getMonth() + 1); renderCalendar(); };
+
+    // Инициализируем обработчик загрузки один раз
+    initPhotoUploader();
 }
+
+function initPhotoUploader() {
+    const input = $('inp-pet-photo') as HTMLInputElement;
+    if (!input) return;
+
+    input.onchange = async () => {
+        if (!input.files || input.files.length === 0) return;
+
+        // Лимит файлов (например, 5)
+        if (uploadedPhotosBase64.length + input.files.length > 5) {
+            showToast('Максимум 5 фото', 'error');
+            return;
+        }
+
+        // Конвертируем все выбранные файлы
+        for (let i = 0; i < input.files.length; i++) {
+            const file = input.files[i];
+            try {
+                const base64 = await fileToBase64(file);
+                uploadedPhotosBase64.push(base64);
+            } catch (e) {
+                console.error('Ошибка чтения файла', e);
+            }
+        }
+
+        // Очищаем инпут, чтобы можно было добавить те же файлы снова если удалил
+        input.value = '';
+
+        // Обновляем UI
+        renderPhotoPreviews();
+    };
+}
+
+function renderPhotoPreviews() {
+    const track = $('photo-preview-track');
+    if (!track) return;
+
+    track.innerHTML = '';
+
+    if (uploadedPhotosBase64.length > 0) {
+        track.classList.remove('hidden');
+    } else {
+        track.classList.add('hidden');
+    }
+
+    uploadedPhotosBase64.forEach((b64, index) => {
+        const wrap = createEl('div', 'relative w-20 h-20 flex-shrink-0 rounded-xl overflow-hidden border border-border-dark shadow-sm group');
+
+        const img = createEl('img', 'w-full h-full object-cover');
+        img.src = b64;
+
+        const removeBtn = createEl('button', 'absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-red-500 transition-colors backdrop-blur-md opacity-0 group-hover:opacity-100');
+        removeBtn.innerHTML = '<span class="material-symbols-rounded text-[14px] font-bold block">close</span>';
+
+        removeBtn.onclick = (e) => {
+            e.stopPropagation();
+            removePhoto(index);
+        };
+
+        wrap.appendChild(img);
+        wrap.appendChild(removeBtn);
+        track.appendChild(wrap);
+    });
+}
+
+function removePhoto(index: number) {
+    uploadedPhotosBase64.splice(index, 1);
+    renderPhotoPreviews();
+}
+
+const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+    });
+};
 
 export function openBooking(service: Service, onBack: () => void) {
     selectedService = service;
@@ -57,23 +140,22 @@ export function openBooking(service: Service, onBack: () => void) {
 
     setText('selected-service-name', `${service.name} • ${service.price} ₸`);
 
-    // Сбрасываем форму (включая фото)
-    const photoInput = $('inp-pet-photo') as HTMLInputElement;
-    const previewBox = $('photo-preview-box');
-    const uploadLabel = photoInput?.closest('label');
-    const photoContainer = $('photo-upload-container'); // Находим сам блок
+    // Сбрасываем форму
+    const nameInp = $('inp-client-name') as HTMLInputElement;
+    if (!nameInp.value && Telegram.WebApp.initDataUnsafe?.user) {
+        const u = Telegram.WebApp.initDataUnsafe.user;
+        nameInp.value = `${u.first_name} ${u.last_name || ''}`.trim();
+    }
 
-    if (photoInput) photoInput.value = '';
-    if (previewBox) previewBox.classList.add('hidden');
-    if (uploadLabel) uploadLabel.classList.remove('hidden');
+    // Сбрасываем фото
+    uploadedPhotosBase64 = [];
+    renderPhotoPreviews();
 
-    // [FIX] Логика отображения: Показываем только если мастер Premium
+    // Показываем/скрываем блок загрузки
+    const photoContainer = $('photo-upload-container');
     if (photoContainer) {
-        if (isMasterPremium) {
-            photoContainer.classList.remove('hidden');
-        } else {
-            photoContainer.classList.add('hidden');
-        }
+        if (isMasterPremium) photoContainer.classList.remove('hidden');
+        else photoContainer.classList.add('hidden');
     }
 
     hide('view-home');
@@ -86,7 +168,6 @@ export function openBooking(service: Service, onBack: () => void) {
 
     viewDate = new Date();
     const today = new Date();
-
     renderCalendar();
     selectDate(`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`);
 }
@@ -151,7 +232,7 @@ async function loadSlots(date: string) {
         grid.innerHTML = '';
 
         if (slots.length === 0) {
-            grid.innerHTML = '<div class="col-span-4 text-center text-text-secondary/50 text-sm py-2">Нет мест на этот день</div>';
+            grid.innerHTML = '<div class="col-span-4 text-center text-text-secondary/50 text-sm py-2">Нет мест</div>';
             return;
         }
 
@@ -188,15 +269,6 @@ function showBookingForm() {
     }
 }
 
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
-    });
-};
-
 async function submitBooking() {
     const name = getVal('inp-client-name').trim();
     const phone = getVal('inp-phone').trim();
@@ -208,19 +280,6 @@ async function submitBooking() {
     Telegram.WebApp.MainButton.showProgress();
 
     try {
-        let photoBase64 = null;
-        // [FIX] Обрабатываем фото только если мастер Premium
-        if (isMasterPremium) {
-            const photoInput = $('inp-pet-photo') as HTMLInputElement;
-            if (photoInput && photoInput.files && photoInput.files[0]) {
-                try {
-                    photoBase64 = await fileToBase64(photoInput.files[0]);
-                } catch (e) {
-                    console.error("Ошибка обработки фото", e);
-                }
-            }
-        }
-
         const payload = {
             master_telegram_id: parseInt(masterId),
             service_id: selectedService!.id,
@@ -231,7 +290,9 @@ async function submitBooking() {
             pet_name: getVal('inp-pet-name').trim(),
             pet_breed: getVal('inp-pet-breed').trim() || null,
             comment: getVal('inp-comment').trim() || null,
-            pet_photo_base64: photoBase64 // Отправляем фото (или null)
+
+            // [ВАЖНО] Отправляем массив строк
+            pet_photos_base64: isMasterPremium ? uploadedPhotosBase64 : []
         };
 
         await apiFetch('/appointments', { method: 'POST', body: JSON.stringify(payload) });

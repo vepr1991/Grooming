@@ -16,10 +16,10 @@ class AppointmentCreate(BaseModel):
     pet_name: str
     pet_breed: Optional[str] = None
 
-    # Поле для приема "сырой" картинки от клиента (Base64)
-    pet_photo_base64: Optional[str] = None
+    # [FIX] Теперь принимаем СПИСОК Base64 строк
+    pet_photos_base64: List[str] = []
 
-    # Поле для сохранения в БД (список ссылок)
+    # Поле для сохранения ссылок в БД
     pet_photos: List[str] = []
 
     comment: Optional[str] = None
@@ -27,7 +27,6 @@ class AppointmentCreate(BaseModel):
 
     @field_validator('client_phone')
     def validate_phone(cls, v):
-        # Простая очистка и проверка
         clean = re.sub(r'\D', '', v)
         if len(clean) < 10:
             raise ValueError('Некорректный формат телефона')
