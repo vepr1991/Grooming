@@ -5,16 +5,15 @@
     <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport" />
     <title>Запись к мастеру</title>
     
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://unpkg.com/imask"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    
+    <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
+    <script src="https://unpkg.com/imask" defer></script>
+
     <script>
       (function() {
         const tg = window.Telegram?.WebApp;
-        const isDark = (tg && tg.colorScheme === 'dark') || 
+        const isDark = (tg && tg.colorScheme === 'dark') ||
                        (!tg && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        
+
         if (isDark) { document.documentElement.classList.add('dark'); }
         else { document.documentElement.classList.remove('dark'); }
 
@@ -31,26 +30,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet" />
 
-    <script>
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            colors: {
-              bg: "var(--c-bg)",
-              surface: "var(--c-surface)",
-              primary: "var(--c-primary)",
-              secondary: "var(--c-text-sec)",
-              border: "var(--c-border)",
-              success: "var(--c-success)",
-              error: "var(--c-error)",
-              white: "var(--c-text-main)"
-            },
-            fontFamily: { sans: ["Plus Jakarta Sans", "sans-serif"] }
-          }
-        }
-      }
-    </script>
     <link rel="stylesheet" href="./src/style.css">
     <style>
       body { background-color: var(--c-bg); color: var(--c-text-main); -webkit-tap-highlight-color: transparent; }
@@ -59,11 +38,11 @@
       .desc-expanded { -webkit-line-clamp: unset; }
     </style>
   </head>
-  <body class="min-h-screen pb-10">
+  <body class="min-h-screen pb-10 bg-background-dark text-white">
 
     <div id="view-home" class="flex flex-col relative pb-10">
-        <header class="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 bg-bg/95 backdrop-blur-md border-b border-border/30 transition-colors duration-300">
-            <button onclick="Telegram.WebApp.close()" class="p-2 -ml-2 text-secondary hover:text-white transition-colors">
+        <header class="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 bg-background-dark/95 backdrop-blur-md border-b border-border-dark/30 transition-colors duration-300">
+            <button onclick="Telegram.WebApp.close()" class="p-2 -ml-2 text-text-secondary hover:text-white transition-colors">
                 <span class="material-symbols-rounded">close</span>
             </button>
             <h1 class="text-lg font-bold text-white tracking-wide">Запись онлайн</h1>
@@ -74,8 +53,8 @@
 
         <div class="flex flex-col items-center pt-20 pb-6 px-6 text-center w-full">
             <div class="relative w-full max-w-[320px] mx-auto mb-4">
-                <div id="client-carousel-track" class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide rounded-[32px] border-4 border-surface shadow-2xl aspect-square bg-bg">
-                    <div class="flex-shrink-0 w-full h-full snap-center bg-surface flex flex-col items-center justify-center text-secondary/30">
+                <div id="client-carousel-track" class="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide rounded-[32px] border-4 border-surface-dark shadow-2xl aspect-square bg-background-dark">
+                    <div class="flex-shrink-0 w-full h-full snap-center bg-surface-dark flex flex-col items-center justify-center text-text-secondary/30">
                         <span class="material-symbols-rounded text-6xl mb-2">storefront</span>
                     </div>
                 </div>
@@ -85,9 +64,9 @@
             <h2 id="hero-title" class="text-2xl font-extrabold text-white mb-2 leading-tight tracking-tight">Загрузка...</h2>
 
             <div class="flex flex-col items-center gap-3 mb-4">
-                <div class="flex items-center gap-2 bg-surface/50 px-3 py-1 rounded-full border border-border">
+                <div class="flex items-center gap-2 bg-surface-dark/50 px-3 py-1 rounded-full border border-border-dark">
                     <span id="status-text-dot" class="text-gray-500 text-[10px]">●</span>
-                    <span id="hero-status" class="text-secondary text-xs font-bold uppercase tracking-wider">Загрузка...</span>
+                    <span id="hero-status" class="text-text-secondary text-xs font-bold uppercase tracking-wider">Загрузка...</span>
                 </div>
 
                 <a id="hero-phone" href="#" class="hidden flex items-center gap-2 text-primary font-bold text-sm bg-primary/10 px-4 py-2 rounded-xl hover:bg-primary/20 transition-colors">
@@ -97,19 +76,19 @@
             </div>
 
             <div class="relative max-w-[280px]">
-                <p id="hero-desc" class="text-secondary text-sm leading-relaxed desc-clamp transition-all duration-300"></p>
+                <p id="hero-desc" class="text-text-secondary text-sm leading-relaxed desc-clamp transition-all duration-300"></p>
                 <button id="btn-expand-desc" class="hidden text-primary text-xs font-bold mt-1 hover:underline">Читать полностью</button>
             </div>
         </div>
 
         <div class="px-4 space-y-3" id="services-list">
-            <div class="text-center text-secondary py-10">Загрузка услуг...</div>
+            <div class="text-center text-text-secondary py-10">Загрузка услуг...</div>
         </div>
     </div>
 
-    <div id="view-booking" class="hidden min-h-screen bg-bg flex-col pt-4 pb-10">
+    <div id="view-booking" class="hidden min-h-screen bg-background-dark flex-col pt-4 pb-10">
         <header class="px-4 mb-4">
-            <button onclick="goBack()" class="flex items-center gap-1 text-secondary hover:text-white transition-colors mb-2">
+            <button onclick="goBack()" class="flex items-center gap-1 text-text-secondary hover:text-white transition-colors mb-2">
                 <span class="material-symbols-rounded text-xl">arrow_back</span>
                 <span class="text-sm font-bold">Назад к услугам</span>
             </button>
@@ -117,61 +96,61 @@
             <p id="selected-service-name" class="text-primary text-sm font-medium">Услуга</p>
         </header>
 
-        <div class="bg-surface mx-4 rounded-2xl p-4 border border-border shadow-lg mb-6">
+        <div class="bg-surface-dark mx-4 rounded-2xl p-4 border border-border-dark shadow-lg mb-6">
             <div class="flex justify-between items-center mb-4">
                 <h3 id="cal-month" class="text-lg font-bold text-white capitalize"></h3>
                 <div class="flex gap-1">
-                    <button id="btn-prev-month" class="p-1 hover:bg-bg rounded-lg text-secondary"><span class="material-symbols-rounded">chevron_left</span></button>
-                    <button id="btn-next-month" class="p-1 hover:bg-bg rounded-lg text-secondary"><span class="material-symbols-rounded">chevron_right</span></button>
+                    <button id="btn-prev-month" class="p-1 hover:bg-background-dark rounded-lg text-text-secondary"><span class="material-symbols-rounded">chevron_left</span></button>
+                    <button id="btn-next-month" class="p-1 hover:bg-background-dark rounded-lg text-text-secondary"><span class="material-symbols-rounded">chevron_right</span></button>
                 </div>
             </div>
             <div class="grid grid-cols-7 gap-1 mb-2 text-center">
-                <span class="text-[10px] font-bold text-secondary uppercase">Пн</span>
-                <span class="text-[10px] font-bold text-secondary uppercase">Вт</span>
-                <span class="text-[10px] font-bold text-secondary uppercase">Ср</span>
-                <span class="text-[10px] font-bold text-secondary uppercase">Чт</span>
-                <span class="text-[10px] font-bold text-secondary uppercase">Пт</span>
-                <span class="text-[10px] font-bold text-secondary uppercase">Сб</span>
-                <span class="text-[10px] font-bold text-secondary uppercase">Вс</span>
+                <span class="text-[10px] font-bold text-text-secondary uppercase">Пн</span>
+                <span class="text-[10px] font-bold text-text-secondary uppercase">Вт</span>
+                <span class="text-[10px] font-bold text-text-secondary uppercase">Ср</span>
+                <span class="text-[10px] font-bold text-text-secondary uppercase">Чт</span>
+                <span class="text-[10px] font-bold text-text-secondary uppercase">Пт</span>
+                <span class="text-[10px] font-bold text-text-secondary uppercase">Сб</span>
+                <span class="text-[10px] font-bold text-text-secondary uppercase">Вс</span>
             </div>
             <div id="cal-grid" class="grid grid-cols-7 gap-1"></div>
         </div>
 
         <div id="slots-container" class="px-4 mb-8 hidden">
-            <h3 class="text-sm font-bold text-secondary uppercase tracking-wider mb-3">Доступные слоты</h3>
+            <h3 class="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">Доступные слоты</h3>
             <div id="slots-grid" class="grid grid-cols-4 gap-2"></div>
         </div>
 
         <div id="booking-form" class="px-4 space-y-4 hidden pb-10">
-            <h3 class="text-sm font-bold text-secondary uppercase tracking-wider">Детали записи</h3>
+            <h3 class="text-sm font-bold text-text-secondary uppercase tracking-wider">Детали записи</h3>
             <div class="space-y-4">
                 <div class="group">
-                    <label class="block text-xs font-bold text-secondary mb-1.5 ml-1">ВАШЕ ИМЯ</label>
-                    <input type="text" id="inp-client-name" class="w-full bg-surface border-2 border-border focus:border-primary rounded-xl p-4 text-white font-bold outline-none transition-all placeholder-secondary/30" placeholder="Как к вам обращаться?">
+                    <label class="block text-xs font-bold text-text-secondary mb-1.5 ml-1">ВАШЕ ИМЯ</label>
+                    <input type="text" id="inp-client-name" class="w-full bg-surface-dark border-2 border-border-dark focus:border-primary rounded-xl p-4 text-white font-bold outline-none transition-all placeholder-text-secondary/30" placeholder="Как к вам обращаться?">
                 </div>
                 <div class="group">
-                    <label class="block text-xs font-bold text-secondary mb-1.5 ml-1">ВАШ ТЕЛЕФОН</label>
-                    <input type="tel" id="inp-phone" class="w-full bg-surface border-2 border-border focus:border-primary rounded-xl p-4 text-white font-bold outline-none transition-all placeholder-secondary/30" placeholder="+7 (___) ___-__-__">
+                    <label class="block text-xs font-bold text-text-secondary mb-1.5 ml-1">ВАШ ТЕЛЕФОН</label>
+                    <input type="tel" id="inp-phone" class="w-full bg-surface-dark border-2 border-border-dark focus:border-primary rounded-xl p-4 text-white font-bold outline-none transition-all placeholder-text-secondary/30" placeholder="+7 (___) ___-__-__">
                 </div>
                 <div class="group">
-                    <label class="block text-xs font-bold text-secondary mb-1.5 ml-1">КЛИЧКА ПИТОМЦА</label>
-                    <input type="text" id="inp-pet-name" class="w-full bg-surface border-2 border-border focus:border-primary rounded-xl p-4 text-white font-bold outline-none transition-all placeholder-secondary/30" placeholder="Например: Бобик">
+                    <label class="block text-xs font-bold text-text-secondary mb-1.5 ml-1">КЛИЧКА ПИТОМЦА</label>
+                    <input type="text" id="inp-pet-name" class="w-full bg-surface-dark border-2 border-border-dark focus:border-primary rounded-xl p-4 text-white font-bold outline-none transition-all placeholder-text-secondary/30" placeholder="Например: Бобик">
                 </div>
                 <div class="group">
-                    <label class="block text-xs font-bold text-secondary mb-1.5 ml-1">ПОРОДА (Опционально)</label>
-                    <input type="text" id="inp-pet-breed" class="w-full bg-surface border-2 border-border focus:border-primary rounded-xl p-4 text-white font-bold outline-none transition-all placeholder-secondary/30" placeholder="Например: Корги">
+                    <label class="block text-xs font-bold text-text-secondary mb-1.5 ml-1">ПОРОДА (Опционально)</label>
+                    <input type="text" id="inp-pet-breed" class="w-full bg-surface-dark border-2 border-border-dark focus:border-primary rounded-xl p-4 text-white font-bold outline-none transition-all placeholder-text-secondary/30" placeholder="Например: Корги">
                 </div>
                 <div class="group">
-                    <label class="block text-xs font-bold text-secondary mb-1.5 ml-1">КОММЕНТАРИЙ</label>
-                    <textarea id="inp-comment" rows="2" class="w-full bg-surface border-2 border-border focus:border-primary rounded-xl p-4 text-white font-bold outline-none transition-all placeholder-secondary/30 resize-none" placeholder="Особенности, пожелания..."></textarea>
+                    <label class="block text-xs font-bold text-text-secondary mb-1.5 ml-1">КОММЕНТАРИЙ</label>
+                    <textarea id="inp-comment" rows="2" class="w-full bg-surface-dark border-2 border-border-dark focus:border-primary rounded-xl p-4 text-white font-bold outline-none transition-all placeholder-text-secondary/30 resize-none" placeholder="Особенности, пожелания..."></textarea>
                 </div>
 
                 <label class="flex items-start gap-3 p-2 cursor-pointer group">
                     <div class="relative flex items-center mt-0.5">
-                        <input type="checkbox" id="inp-agreement" class="peer h-5 w-5 cursor-pointer appearance-none rounded border-2 border-border transition-all checked:border-primary checked:bg-primary">
+                        <input type="checkbox" id="inp-agreement" class="peer h-5 w-5 cursor-pointer appearance-none rounded border-2 border-border-dark transition-all checked:border-primary checked:bg-primary">
                         <span class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100 pointer-events-none material-symbols-rounded text-sm font-bold">check</span>
                     </div>
-                    <span class="text-xs text-secondary leading-tight select-none group-active:text-white transition-colors">
+                    <span class="text-xs text-text-secondary leading-tight select-none group-active:text-white transition-colors">
                         Я согласен с <button class="text-primary hover:underline font-bold" onclick="event.stopPropagation(); event.preventDefault(); openLegal('offer')">условиями оферты</button> и <button class="text-primary hover:underline font-bold" onclick="event.stopPropagation(); event.preventDefault(); openLegal('policy')">политикой обработки данных</button>.
                     </span>
                 </label>
@@ -179,58 +158,57 @@
         </div>
     </div>
 
-    <div id="view-my-appointments" class="hidden min-h-screen bg-bg flex-col pt-4 pb-10">
-        <header class="px-4 mb-6 sticky top-0 bg-bg/95 backdrop-blur z-20 py-2">
-            <button id="btn-close-history" class="flex items-center gap-1 text-secondary hover:text-white transition-colors mb-2">
+    <div id="view-my-appointments" class="hidden min-h-screen bg-background-dark flex-col pt-4 pb-10">
+        <header class="px-4 mb-6 sticky top-0 bg-background-dark/95 backdrop-blur z-20 py-2">
+            <button id="btn-close-history" class="flex items-center gap-1 text-text-secondary hover:text-white transition-colors mb-2">
                 <span class="material-symbols-rounded text-xl">arrow_back</span>
                 <span class="text-sm font-bold">На главную</span>
             </button>
             <h2 class="text-2xl font-bold text-white">Мои записи</h2>
         </header>
         <div id="my-appointments-list" class="px-4 flex flex-col gap-3">
-            <div class="text-center text-secondary py-10">Загрузка...</div>
+            <div class="text-center text-text-secondary py-10">Загрузка...</div>
         </div>
     </div>
 
-    <div id="view-legal" class="hidden min-h-screen bg-bg flex-col pt-4 pb-10 absolute inset-0 z-[60]">
-        <header class="px-4 mb-6 sticky top-0 bg-bg/95 backdrop-blur z-20 py-2 border-b border-border/30">
-            <button onclick="closeLegal()" class="flex items-center gap-1 text-secondary hover:text-white transition-colors mb-2">
+    <div id="view-legal" class="hidden min-h-screen bg-background-dark flex-col pt-4 pb-10 absolute inset-0 z-[60]">
+        <header class="px-4 mb-6 sticky top-0 bg-background-dark/95 backdrop-blur z-20 py-2 border-b border-border-dark/30">
+            <button onclick="closeLegal()" class="flex items-center gap-1 text-text-secondary hover:text-white transition-colors mb-2">
                 <span class="material-symbols-rounded text-xl">arrow_back</span>
                 <span class="text-sm font-bold">Назад к записи</span>
             </button>
             <h2 id="legal-title" class="text-xl font-bold text-white">Документ</h2>
         </header>
-        <div id="legal-content" class="px-4 text-sm text-secondary leading-relaxed pb-10">
-            </div>
+        <div id="legal-content" class="px-4 text-sm text-text-secondary leading-relaxed pb-10"></div>
     </div>
 
-    <div id="view-success" class="hidden min-h-screen flex flex-col items-center justify-center p-6 text-center bg-bg">
+    <div id="view-success" class="hidden min-h-screen flex flex-col items-center justify-center p-6 text-center bg-background-dark">
         <div class="w-24 h-24 bg-success/20 rounded-full flex items-center justify-center mb-6 ring-4 ring-success/10">
             <span class="material-symbols-rounded text-6xl text-success">check</span>
         </div>
         <h2 class="text-3xl font-extrabold text-white mb-3">Заявка создана!</h2>
 
-        <div class="text-secondary mb-8 max-w-xs space-y-4">
+        <div class="text-text-secondary mb-8 max-w-xs space-y-4">
             <p class="text-sm leading-relaxed">Мы отправим уведомление, как только мастер подтвердит запись!</p>
 
-            <div class="bg-surface/50 border border-border/50 rounded-xl p-4 space-y-1.5 shadow-sm text-left">
+            <div class="bg-surface-dark/50 border border-border-dark/50 rounded-xl p-4 space-y-1.5 shadow-sm text-left">
                 <div class="flex justify-between items-center text-sm">
-                    <span class="text-secondary">Дата:</span>
+                    <span class="text-text-secondary">Дата:</span>
                     <span id="success-date" class="text-white font-bold"></span>
                 </div>
                 <div class="flex justify-between items-center text-sm">
-                    <span class="text-secondary">Услуга:</span>
+                    <span class="text-text-secondary">Услуга:</span>
                     <span id="success-service" class="text-primary font-bold"></span>
                 </div>
             </div>
         </div>
 
-        <button onclick="Telegram.WebApp.close()" class="w-full max-w-sm bg-surface border border-border text-white font-bold py-4 rounded-xl active:scale-95 transition-all hover:bg-surface/80">
+        <button onclick="Telegram.WebApp.close()" class="w-full max-w-sm bg-surface-dark border border-border-dark text-white font-bold py-4 rounded-xl active:scale-95 transition-all hover:bg-surface-dark/80">
             Закрыть
         </button>
     </div>
 
-    <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 bg-surface border border-primary text-white px-6 py-3 rounded-full shadow-2xl z-[100] hidden transition-all flex items-center gap-2 w-max max-w-[90%]">
+    <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 bg-surface-dark border border-primary text-white px-6 py-3 rounded-full shadow-2xl z-[100] hidden transition-all flex items-center gap-2 w-max max-w-[90%] opacity-0 translate-y-[-20px]">
         <span class="material-symbols-rounded text-primary">info</span>
         <span id="toast-msg" class="font-bold text-sm"></span>
     </div>

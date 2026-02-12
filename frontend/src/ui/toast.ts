@@ -11,29 +11,33 @@ export function showToast(msg: string, type: 'success' | 'error' = 'success') {
     const icon = el?.querySelector('.material-symbols-rounded, .material-symbols-outlined');
 
     if (!el || !txt) {
-        console.warn('Toast element not found in DOM (id="toast" or "toast-msg" missing)');
+        console.warn('Toast element not found in DOM');
         return;
     }
 
-    // Сбрасываем предыдущие таймеры, чтобы тост не исчез посередине нового показа
+    // Сброс таймеров
     if (toastTimeout) clearTimeout(toastTimeout);
     if (animationTimeout) clearTimeout(animationTimeout);
 
     // Устанавливаем текст
     txt.textContent = msg;
 
-    // Сбрасываем классы скрытия (показываем элемент)
-    el.classList.remove('hidden', 'opacity-0', 'translate-y-[-20px]');
+    // Сначала убеждаемся, что элемент видим (display), но прозрачен
+    el.classList.remove('hidden');
 
-    // Сбрасываем цвета границ
+    // Форсируем перерисовку браузера (hack), чтобы анимация сработала плавно
+    void el.offsetWidth;
+
+    // Показываем: убираем прозрачность и сдвиг
+    el.classList.remove('opacity-0', 'translate-y-[-20px]');
+
+    // Сброс стилей границ и иконок
     el.classList.remove('border-primary', 'border-error');
-
-    // Сбрасываем цвета иконки
     if (icon) {
-        icon.classList.remove('text-primary', 'text-error', 'text-success'); // text-success добавлен на всякий случай
+        icon.classList.remove('text-primary', 'text-error', 'text-success');
     }
 
-    // Применяем стили
+    // Применяем стили типа
     if (type === 'error') {
         el.classList.add('border-error');
         if (icon) {
@@ -48,12 +52,12 @@ export function showToast(msg: string, type: 'success' | 'error' = 'success') {
         }
     }
 
-    // Таймер на исчезновение
+    // Таймер скрытия
     toastTimeout = setTimeout(() => {
-        // Анимация ухода вверх и прозрачности
+        // Уходим вверх и становимся прозрачными
         el.classList.add('opacity-0', 'translate-y-[-20px]');
 
-        // Реальное скрытие (display: none) после завершения анимации
+        // После анимации (300мс) скрываем display
         animationTimeout = setTimeout(() => {
             el.classList.add('hidden');
         }, 300);
