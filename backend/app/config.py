@@ -1,9 +1,14 @@
-import os
-from dotenv import load_dotenv
+from pydantic_settings import BaseSettings
 
-load_dotenv()
+class Settings(BaseSettings):
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+    SUPABASE_URL: str
+    SUPABASE_KEY: str
+    BOT_TOKEN: str
+    ADMIN_CHAT_ID: int
+
+    class Config:
+        env_file = ".env"
+        extra = "ignore"
+
+settings = Settings()
