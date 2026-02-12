@@ -1,6 +1,7 @@
 /**
  * (c) 2026 Vladimir Kovalenko
  */
+import '../style.css';
 import { initTelegram } from '../core/tg';
 import { $ } from '../core/dom';
 import { loadProfile, initProfileHandlers } from '../features/admin/profile';

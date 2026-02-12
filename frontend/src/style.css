@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
     /* === СВЕТЛАЯ ТЕМА (Light Mode) === */
     --c-bg: #f3f4f6;       /* Светло-серый фон */
