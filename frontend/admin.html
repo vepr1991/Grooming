@@ -362,19 +362,23 @@
 
     <script type="module" src="./src/pages/admin.ts"></script>
 
-    <div id="gallery-modal" class="fixed inset-0 z-[300] bg-black/95 hidden flex items-center justify-center animate-in fade-in duration-300 select-none opacity-0 transition-opacity" aria-hidden="true">
+    <div id="gallery-modal" class="fixed inset-0 z-[999] bg-black/95 hidden flex items-center justify-center animate-in fade-in duration-300 select-none opacity-0 transition-opacity" aria-hidden="true">
 
-        <button onclick="closeGallery()" class="absolute top-6 right-6 p-2 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors z-[310] backdrop-blur-md">
+        <button onclick="closeGallery()" class="absolute top-6 right-6 p-2 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors z-[1000] backdrop-blur-md">
             <span class="material-symbols-outlined text-[28px]">close</span>
         </button>
 
-        <div class="absolute inset-x-4 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none z-[310]">
+        <div class="absolute inset-x-4 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none z-[1000]">
             <button id="gallery-prev" onclick="galleryPrev()" class="p-3 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 rounded-full transition-all pointer-events-auto backdrop-blur-sm active:scale-95">
                 <span class="material-symbols-outlined text-[32px]">chevron_left</span>
             </button>
             <button id="gallery-next" onclick="galleryNext()" class="p-3 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 rounded-full transition-all pointer-events-auto backdrop-blur-sm active:scale-95">
                 <span class="material-symbols-outlined text-[32px]">chevron_right</span>
             </button>
+        </div>
+
+        <div id="gallery-loader" class="absolute inset-0 flex items-center justify-center z-[1000] hidden">
+            <div class="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
         </div>
 
         <div class="relative w-full h-full flex items-center justify-center p-4">
@@ -386,7 +390,7 @@
             >
         </div>
 
-        <div id="gallery-counter" class="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/60 text-sm font-medium bg-black/20 px-3 py-1 rounded-full backdrop-blur-md">
+        <div id="gallery-counter" class="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/60 text-sm font-medium bg-black/20 px-3 py-1 rounded-full backdrop-blur-md z-[1000]">
             1 / 1
         </div>
     </div>
@@ -403,6 +407,7 @@
         const elModal = document.getElementById('gallery-modal');
         const elImg = document.getElementById('gallery-img');
         const elCounter = document.getElementById('gallery-counter');
+        const elLoader = document.getElementById('gallery-loader');
 
         window.openGallery = (photos, initialIndex = 0) => {
             galleryState.images = Array.isArray(photos) ? photos : [photos];
@@ -454,9 +459,16 @@
         function updateGalleryUI() {
             const { images, currentIndex } = galleryState;
 
-            elImg.classList.add('opacity-50', 'scale-95');
+            // Show loader immediately
+            elLoader.classList.remove('hidden');
+            elImg.classList.add('opacity-50', 'scale-95'); // Dim old image
 
-            setTimeout(() => {
+            // Create temp image to preload
+            const tempImg = new Image();
+            tempImg.src = images[currentIndex];
+
+            tempImg.onload = () => {
+                // When loaded, swap source
                 elImg.src = images[currentIndex];
                 elCounter.textContent = `${currentIndex + 1} / ${images.length}`;
 
@@ -471,11 +483,11 @@
                     nextBtn.classList.remove('hidden');
                 }
 
-                elImg.onload = () => {
-                    elImg.classList.remove('opacity-50', 'scale-95', 'opacity-0');
-                    elImg.classList.add('scale-100', 'opacity-100');
-                };
-            }, 150);
+                // Hide loader and show image
+                elLoader.classList.add('hidden');
+                elImg.classList.remove('opacity-50', 'scale-95', 'opacity-0');
+                elImg.classList.add('scale-100', 'opacity-100');
+            };
         }
 
         elModal.onclick = (e) => {
