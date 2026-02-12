@@ -41,5 +41,6 @@ export interface Appointment {
     client_username?: string;
     pet_name: string;
     pet_breed?: string;
+    pet_photos?: string[];
     comment?: string;
 }
