@@ -4,16 +4,18 @@ import { apiFetch } from '../../core/api';
 export async function loadAnalytics() {
     const content = $('analytics-content');
     const lock = $('analytics-lock');
+    const loader = $('analytics-loader'); // [NEW] Ссылка на скелетон
 
-    // Защита: если элементов нет, просто выходим
     if (!content || !lock) return;
 
     try {
         const data = await apiFetch<any>('/me/analytics/dashboard');
 
-        // Проверка: Если не премиум
+        // Когда данные пришли — скрываем скелетон
+        if (loader) hide(loader);
+
+        // Проверка статуса PREMIUM
         if (!data.is_premium) {
-            console.log('User is not premium, showing lock');
             show(lock);
             hide(content);
             return;
@@ -22,16 +24,15 @@ export async function loadAnalytics() {
         // Если премиум
         hide(lock);
         show(content);
-        // Принудительно ставим flex, чтобы верстка не поехала
         content.style.display = 'flex';
 
-        // 1. Заполняем KPI (безопасная проверка на существование полей)
+        // 1. KPI
         if (data.kpi) {
             setText('an-revenue', `${data.kpi.revenue?.toLocaleString() || 0} ₸`);
             setText('an-avg', `${data.kpi.avg_check?.toLocaleString() || 0} ₸`);
         }
 
-        // 2. Топ услуг
+        // 2. Популярные услуги
         const topContainer = $('an-top-services');
         if (topContainer) {
             topContainer.innerHTML = '';
@@ -78,7 +79,7 @@ export async function loadAnalytics() {
             }
         }
 
-        // 3. График динамики
+        // 3. Динамика
         const barsContainer = $('an-chart-bars');
         const labelsContainer = $('an-chart-labels');
         if (barsContainer && labelsContainer) {
@@ -114,7 +115,7 @@ export async function loadAnalytics() {
             });
         }
 
-        // 4. Пай чарт (Статусы)
+        // 4. Статусы
         const s = data.status_distribution || { completed: 0, cancelled: 0, pending: 0 };
         const total = s.completed + s.cancelled + s.pending;
         setText('an-total-count', total.toString());
@@ -151,7 +152,8 @@ export async function loadAnalytics() {
 
     } catch (e) {
         console.error("Analytics load error:", e);
-        // Безопасный режим: при ошибке показываем замок, а не пустой экран
+        // Если ошибка — убираем лоадер и показываем замок (безопасный режим)
+        if (loader) hide(loader);
         show(lock);
         hide(content);
     }
