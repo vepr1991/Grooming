@@ -1,13 +1,14 @@
-# (c) 2026 Владимир Коваленко. Все права защищены.
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from typing import List
 from datetime import datetime
 import pytz
 import uuid
+import httpx  # [NEW] Нужен для отправки запроса в Telegram
 
 from app.auth import validate_telegram_data
 from app.db import supabase
 from app.utils import send_telegram_message, compress_image, escape_html
+from app.config import BOT_TOKEN, ADMIN_CHAT_ID  # [NEW] Импортируем настройки
 from app.schemas.master import (
     MasterProfileUpdate, ServiceCreate, ServiceUpdate, WorkingHourItem
 )
@@ -18,7 +19,8 @@ router = APIRouter(prefix="/me", tags=["Admin"])
 @router.get("")
 async def get_my_profile(user=Depends(validate_telegram_data)):
     tg_id = user['id']
-    res = supabase.table("masters").select("*, is_premium").eq("telegram_id", tg_id).execute()
+    # Выбираем is_approved
+    res = supabase.table("masters").select("*, is_premium, is_approved").eq("telegram_id", tg_id).execute()
     if not res.data:
         new_user = {
             "telegram_id": tg_id,
@@ -42,6 +44,34 @@ async def update_profile(data: MasterProfileUpdate, user=Depends(validate_telegr
             update_data['avatar_url'] = None
 
     res = supabase.table("masters").update(update_data).eq("telegram_id", tg_id).execute()
+
+    if res.data:
+        master = res.data[0]
+        # [NEW] Логика уведомления Админа
+        # Если мастер заполнил название салона (регистрация), но еще не одобрен
+        if master.get('salon_name') and not master.get('is_approved'):
+            try:
+                admin_msg = (
+                    f"🚨 <b>Новая регистрация!</b>\n"
+                    f"Салон: {master.get('salon_name')}\n"
+                    f"Тел: {master.get('phone') or 'Не указан'}\n"
+                    f"ID: <code>{master.get('telegram_id')}</code>\n\n"
+                    f"👉 Зайди в базу и поставь is_approved = TRUE"
+                )
+
+                # Отправляем асинхронно, чтобы не тормозить ответ пользователю
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                        json={
+                            "chat_id": ADMIN_CHAT_ID,
+                            "text": admin_msg,
+                            "parse_mode": "HTML"
+                        }
+                    )
+            except Exception as e:
+                print(f"Error sending admin notification: {e}")
+
     return res.data
 
 

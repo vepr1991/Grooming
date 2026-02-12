@@ -13,7 +13,17 @@ export async function loadProfile() {
         const data = await apiFetch<{ user: any, profile: MasterProfile }>('/me');
         const p = data.profile;
 
-        // Если нет имени салона, показываем онбординг
+        // [NEW] ПРОВЕРКА ОДОБРЕНИЯ
+        // Если регистрация уже пройдена (есть имя салона), но админ не одобрил
+        if (p.salon_name && !p.is_approved) {
+            show('approval-screen');
+            hide('onboarding-screen'); // Скрываем онбординг, если был открыт
+            return; // БЛОКИРУЕМ ЗАГРУЗКУ ДАЛЬШЕ
+        } else {
+            hide('approval-screen');
+        }
+
+        // Если нет имени салона, показываем онбординг (регистрацию)
         if (!p.salon_name) show('onboarding-screen');
 
         isPremium = p.is_premium || false;
@@ -163,8 +173,11 @@ export function initProfileHandlers() {
             setVal('address', addr);
 
             hide('onboarding-screen');
-            showToast('Салон создан!');
-            loadProfile(); // Перезагружаем, чтобы обновить состояние
+            showToast('Заявка отправлена!');
+
+            // Перезагружаем профиль.
+            // Сработает проверка в loadProfile, и пользователь увидит экран "Ждите одобрения"
+            loadProfile();
         } catch {
             showToast('Ошибка при создании', 'error');
             btn.disabled = false;
