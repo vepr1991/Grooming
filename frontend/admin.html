@@ -47,10 +47,6 @@
           background-color: transparent; border-color: var(--c-border);
       }
       .text-fixed-white { color: #ffffff !important; }
-
-      .safe-top-padding {
-          top: max(20px, env(safe-area-inset-top) + 20px);
-      }
     </style>
   </head>
   <body class="bg-background-dark font-display text-white antialiased selection:bg-primary/30">
@@ -288,202 +284,147 @@
 
     <script type="module" src="./src/pages/admin.ts"></script>
 
-    <div id="photo-viewer" class="fixed inset-0 z-[99999] hidden">
-      <div class="absolute inset-0 bg-black/95 backdrop-blur-sm"></div>
+    <div id="gallery-modal" class="fixed inset-0 z-[9999] hidden flex items-center justify-center animate-in fade-in duration-200 opacity-0 transition-opacity" aria-hidden="true">
 
-      <button id="pv-close"
-        class="fixed top-6 right-6 z-[100002] p-2 bg-white text-black rounded-full shadow-2xl active:scale-90 transition-transform hover:scale-110">
-        <span class="material-symbols-outlined text-[28px] font-black">close</span>
-      </button>
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="closeGallery()"></div>
 
-      <div id="pv-counter"
-        class="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100002] text-white text-sm font-bold bg-neutral-800/80 px-4 py-2 rounded-full border border-white/10 backdrop-blur-md">
-        1 / 1
-      </div>
+        <div class="relative z-10 bg-surface-dark border border-border-dark rounded-2xl shadow-2xl flex flex-col w-[90%] md:w-[70%] lg:w-[60%] max-h-[80vh] overflow-hidden animate-in zoom-in-95 duration-200">
 
-      <button id="pv-prev"
-        class="fixed left-4 top-1/2 -translate-y-1/2 z-[100002] p-2 bg-white text-black rounded-full shadow-2xl active:scale-90 transition-transform hover:scale-110">
-        <span class="material-symbols-outlined text-[28px] font-black">chevron_left</span>
-      </button>
+            <div class="flex items-center justify-between px-4 py-3 border-b border-border-dark bg-background-dark/50">
+                <span class="text-white/80 text-xs font-bold uppercase tracking-wider">Просмотр фото</span>
+                <button onclick="closeGallery()" class="text-text-secondary hover:text-white transition-colors bg-white/5 hover:bg-white/10 p-1.5 rounded-lg">
+                    <span class="material-symbols-outlined text-xl font-bold">close</span>
+                </button>
+            </div>
 
-      <button id="pv-next"
-        class="fixed right-4 top-1/2 -translate-y-1/2 z-[100002] p-2 bg-white text-black rounded-full shadow-2xl active:scale-90 transition-transform hover:scale-110">
-        <span class="material-symbols-outlined text-[28px] font-black">chevron_right</span>
-      </button>
+            <div class="flex-1 relative bg-black/50 flex items-center justify-center min-h-[300px] overflow-hidden group">
 
-      <div id="pv-loader" class="absolute inset-0 flex items-center justify-center z-[100001] hidden">
-        <div class="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
-      </div>
+                <div id="gallery-loader" class="absolute inset-0 flex items-center justify-center z-0 hidden">
+                    <div class="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                </div>
 
-      <div id="pv-stage"
-        class="absolute inset-0 flex items-center justify-center z-[100000] select-none">
-        <img id="pv-img"
-          class="max-w-full max-h-full object-contain opacity-0 transition-opacity duration-200"
-          draggable="false"
-          alt="Photo">
-      </div>
+                <img
+                    id="gallery-img"
+                    src=""
+                    alt="Gallery Image"
+                    class="max-w-full max-h-full object-contain relative z-10 transition-opacity duration-200 opacity-0"
+                >
+
+                <button id="gallery-prev" onclick="galleryPrev()" class="absolute left-3 z-20 p-2 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-sm transition-all shadow-lg active:scale-90 border border-white/10 opacity-0 group-hover:opacity-100 md:opacity-100">
+                    <span class="material-symbols-outlined text-2xl">chevron_left</span>
+                </button>
+
+                <button id="gallery-next" onclick="galleryNext()" class="absolute right-3 z-20 p-2 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-sm transition-all shadow-lg active:scale-90 border border-white/10 opacity-0 group-hover:opacity-100 md:opacity-100">
+                    <span class="material-symbols-outlined text-2xl">chevron_right</span>
+                </button>
+            </div>
+
+            <div class="px-4 py-3 bg-background-dark/50 border-t border-border-dark flex justify-center">
+                <span id="gallery-counter" class="text-white/60 text-xs font-bold tracking-widest bg-white/5 px-3 py-1 rounded-full">
+                    1 / 1
+                </span>
+            </div>
+        </div>
     </div>
 
     <script>
-      const PhotoViewer = (() => {
-        const state = {
-          photos: [],
-          index: 0,
-          opened: false,
-          startX: 0,
-          startY: 0,
-          moved: false,
+        // --- GALLERY LOGIC ---
+        const galleryState = {
+            images: [],
+            currentIndex: 0,
+            isOpen: false
         };
 
-        const root = document.getElementById("photo-viewer");
-        const img = document.getElementById("pv-img");
-        const counter = document.getElementById("pv-counter");
-        const loader = document.getElementById("pv-loader");
+        const elModal = document.getElementById('gallery-modal');
+        const elImg = document.getElementById('gallery-img');
+        const elCounter = document.getElementById('gallery-counter');
+        const elLoader = document.getElementById('gallery-loader');
+        const elPrev = document.getElementById('gallery-prev');
+        const elNext = document.getElementById('gallery-next');
 
-        const btnClose = document.getElementById("pv-close");
-        const btnPrev = document.getElementById("pv-prev");
-        const btnNext = document.getElementById("pv-next");
+        window.openGallery = (photos, initialIndex = 0) => {
+            galleryState.images = Array.isArray(photos) ? photos : [photos];
+            galleryState.currentIndex = initialIndex;
+            galleryState.isOpen = true;
 
-        function open(photos, initialIndex = 0) {
-          state.photos = Array.isArray(photos) ? photos : [photos];
-          state.index = Math.max(0, Math.min(initialIndex, state.photos.length - 1));
-          state.opened = true;
+            // Show
+            elModal.classList.remove('hidden');
+            // Animate In
+            requestAnimationFrame(() => {
+                elModal.classList.remove('opacity-0');
+            });
 
-          root.classList.remove("hidden");
-          document.body.style.overflow = "hidden"; // блокируем скролл
+            updateGalleryUI();
+            document.addEventListener('keydown', handleGalleryKeydown);
+        };
 
-          render();
-          preloadAround();
+        window.closeGallery = () => {
+            galleryState.isOpen = false;
+            // Animate Out
+            elModal.classList.add('opacity-0');
 
-          document.addEventListener("keydown", onKeydown);
+            setTimeout(() => {
+                elModal.classList.add('hidden');
+                elImg.src = '';
+                galleryState.images = [];
+            }, 200);
+
+            document.removeEventListener('keydown', handleGalleryKeydown);
+        };
+
+        window.galleryNext = () => {
+            const { images, currentIndex } = galleryState;
+            galleryState.currentIndex = (currentIndex === images.length - 1) ? 0 : currentIndex + 1;
+            updateGalleryUI();
+        };
+
+        window.galleryPrev = () => {
+            const { images, currentIndex } = galleryState;
+            galleryState.currentIndex = (currentIndex === 0) ? images.length - 1 : currentIndex - 1;
+            updateGalleryUI();
+        };
+
+        function handleGalleryKeydown(e) {
+            if (!galleryState.isOpen) return;
+            if (e.key === 'Escape') closeGallery();
+            if (e.key === 'ArrowLeft') galleryPrev();
+            if (e.key === 'ArrowRight') galleryNext();
         }
 
-        function close() {
-          state.opened = false;
-          root.classList.add("hidden");
-          img.src = "";
-          img.classList.add("opacity-0");
+        function updateGalleryUI() {
+            const { images, currentIndex } = galleryState;
 
-          document.body.style.overflow = "";
+            elLoader.classList.remove('hidden');
+            elImg.classList.add('opacity-0');
 
-          document.removeEventListener("keydown", onKeydown);
+            const tempImg = new Image();
+            tempImg.src = images[currentIndex];
+
+            tempImg.onload = () => {
+                elImg.src = images[currentIndex];
+                elCounter.textContent = `${currentIndex + 1} / ${images.length}`;
+
+                // Toggle Arrows
+                if (images.length <= 1) {
+                    elPrev.classList.add('hidden');
+                    elNext.classList.add('hidden');
+                } else {
+                    elPrev.classList.remove('hidden');
+                    elNext.classList.remove('hidden');
+                }
+
+                elLoader.classList.add('hidden');
+                elImg.classList.remove('opacity-0');
+            };
         }
 
-        function next() {
-          if (!state.photos.length) return;
-          state.index = (state.index + 1) % state.photos.length;
-          render();
-          preloadAround();
-        }
-
-        function prev() {
-          if (!state.photos.length) return;
-          state.index = (state.index - 1 + state.photos.length) % state.photos.length;
-          render();
-          preloadAround();
-        }
-
-        function render() {
-          const total = state.photos.length;
-          const current = state.index;
-
-          if (total <= 1) {
-            btnPrev.classList.add("hidden");
-            btnNext.classList.add("hidden");
-          } else {
-            btnPrev.classList.remove("hidden");
-            btnNext.classList.remove("hidden");
-          }
-
-          counter.textContent = `${current + 1} / ${total}`;
-
-          loader.classList.remove("hidden");
-          img.classList.add("opacity-0");
-
-          const url = state.photos[current];
-
-          const temp = new Image();
-          temp.src = url;
-
-          temp.onload = () => {
-            img.src = url;
-            loader.classList.add("hidden");
-            img.classList.remove("opacity-0");
-          };
-
-          temp.onerror = () => {
-            loader.classList.add("hidden");
-          };
-        }
-
-        function preloadAround() {
-          const total = state.photos.length;
-          if (total <= 1) return;
-
-          const nextIndex = (state.index + 1) % total;
-          const prevIndex = (state.index - 1 + total) % total;
-
-          [state.photos[nextIndex], state.photos[prevIndex]].forEach(url => {
-            const pre = new Image();
-            pre.src = url;
-          });
-        }
-
-        function onKeydown(e) {
-          if (!state.opened) return;
-
-          if (e.key === "Escape") close();
-          if (e.key === "ArrowRight") next();
-          if (e.key === "ArrowLeft") prev();
-        }
-
-        // Закрытие по клику на фон
-        root.addEventListener("click", (e) => {
-          if (e.target === root || e.target === root.firstElementChild) {
-            close();
-          }
+        // Close on backdrop click only
+        elModal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('absolute') && e.target.onclick) {
+                // If user clicked the backdrop div
+                closeGallery();
+            }
         });
-
-        // Кнопки
-        btnClose.addEventListener("click", close);
-        btnPrev.addEventListener("click", prev);
-        btnNext.addEventListener("click", next);
-
-        // Swipe для мобилок
-        root.addEventListener("touchstart", (e) => {
-          if (!state.opened) return;
-          const t = e.touches[0];
-          state.startX = t.clientX;
-          state.startY = t.clientY;
-          state.moved = false;
-        }, { passive: true });
-
-        root.addEventListener("touchmove", (e) => {
-          if (!state.opened) return;
-          state.moved = true;
-        }, { passive: true });
-
-        root.addEventListener("touchend", (e) => {
-          if (!state.opened) return;
-          if (!state.moved) return;
-
-          const t = e.changedTouches[0];
-          const dx = t.clientX - state.startX;
-          const dy = t.clientY - state.startY;
-
-          // игнорируем вертикальные свайпы (чтобы не закрывалось случайно)
-          if (Math.abs(dy) > Math.abs(dx)) return;
-
-          if (dx < -50) next();
-          if (dx > 50) prev();
-        });
-
-        return { open, close, next, prev };
-      })();
-
-      // Экспортируем глобально, чтобы дергать из admin.ts
-      window.openGallery = PhotoViewer.open;
-      window.closeGallery = PhotoViewer.close;
     </script>
   </body>
 </html>
