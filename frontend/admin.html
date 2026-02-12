@@ -361,33 +361,38 @@
     </div>
 
     <script type="module" src="./src/pages/admin.ts"></script>
+
+    <div id="lightbox" class="fixed inset-0 z-[300] bg-black/95 hidden flex flex-col items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-200" onclick="closeLightbox()">
+        <button class="absolute top-6 right-6 p-4 text-white/70 hover:text-white bg-white/10 rounded-full backdrop-blur-md transition-colors z-20">
+            <span class="material-symbols-outlined text-3xl">close</span>
+        </button>
+
+        <img id="lightbox-img" class="max-w-full max-h-[85vh] rounded-2xl shadow-2xl transition-transform duration-300 scale-95" onclick="event.stopPropagation()">
+    </div>
+
     <script>
-        window.switchTab = (tabName) => {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active', 'border-b-primary', 'text-white'));
-            document.querySelectorAll('.tab-btn p').forEach(el => el.classList.remove('text-white'));
+        // Глобальные функции лайтбокса
+        window.openLightbox = (url) => {
+            const lb = document.getElementById('lightbox');
+            const img = document.getElementById('lightbox-img');
+            if (lb && img) {
+                img.src = url;
+                lb.classList.remove('hidden');
+                setTimeout(() => img.classList.remove('scale-95'), 50);
+            }
+        };
 
-            const tab = document.getElementById(`tab-${tabName}`);
-            if (tab) tab.classList.add('active');
-
-            const btns = document.querySelectorAll('.tab-btn');
-            btns.forEach(btn => {
-                if(btn.getAttribute('onclick').includes(tabName)) btn.classList.add('active');
-            });
-
-            const titles = {
-                'profile': 'Данные салона',
-                'services': 'Услуги',
-                'schedule': 'График работы',
-                'appointments': 'Журнал записей',
-                'analytics': 'Аналитика'
-            };
-            const titleEl = document.getElementById('header-title');
-            if(titleEl) titleEl.innerText = titles[tabName] || 'Админка';
-
-            if (tabName === 'appointments' && window.loadAppointments) window.loadAppointments();
-            if (tabName === 'analytics' && window.loadAnalytics) window.loadAnalytics();
-        }
+        window.closeLightbox = () => {
+            const lb = document.getElementById('lightbox');
+            const img = document.getElementById('lightbox-img');
+            if (lb && img) {
+                img.classList.add('scale-95');
+                setTimeout(() => {
+                    lb.classList.add('hidden');
+                    img.src = '';
+                }, 200);
+            }
+        };
     </script>
   </body>
 </html>

@@ -1,5 +1,6 @@
 from pydantic import BaseModel, field_validator
 from typing import Optional
+from typing import List
 from datetime import datetime
 import re
 
@@ -14,6 +15,7 @@ class AppointmentCreate(BaseModel):
     
     pet_name: str
     pet_breed: Optional[str] = None
+    pet_photos: List[str] = []
     comment: Optional[str] = None
     
     idempotency_key: Optional[str] = None
