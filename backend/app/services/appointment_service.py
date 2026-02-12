@@ -1,28 +1,18 @@
-from fastapi import HTTPException
+import uuid
 from app.db import supabase
 from app.schemas.appointment import AppointmentCreate
-import uuid
-from datetime import datetime, timezone
 
 
 class AppointmentService:
     @staticmethod
     async def create(data: AppointmentCreate, client_id: int, client_username: str = None):
         """
-        Создает запись с проверками безопасности и целостности данных.
+        Создает запись в базе данных.
+        Загрузка фото теперь происходит на стороне клиента (React),
+        сервер получает только ссылки.
         """
-        # 1. Получаем данные
         appt_dict = data.model_dump()
 
-        # Валидация времени
-        booking_time = data.starts_at
-        if booking_time.tzinfo is None:
-            booking_time = booking_time.replace(tzinfo=timezone.utc)
-
-        if booking_time < datetime.now(timezone.utc):
-            raise HTTPException(status_code=400, detail="Нельзя записаться на прошедшее время")
-
-        # 2. Формируем объект для вставки
         insert_data = {
             "master_telegram_id": appt_dict['master_telegram_id'],
             "service_id": appt_dict['service_id'],
@@ -34,8 +24,7 @@ class AppointmentService:
             "pet_breed": appt_dict.get('pet_breed'),
             "comment": appt_dict.get('comment'),
 
-            # [FIX] Добавили сохранение фото!
-            # Если фото нет, записываем пустой массив jsonb '[]'
+            # Сохраняем массив ссылок на фото, который прислал фронтенд
             "pet_photos": appt_dict.get('pet_photos', []),
 
             "starts_at": appt_dict['starts_at'].isoformat(),
@@ -43,24 +32,14 @@ class AppointmentService:
             "idempotency_key": appt_dict.get('idempotency_key') or str(uuid.uuid4())
         }
 
-        # 3. Проверяем, что услуга принадлежит мастеру
-        service_check = supabase.table("services").select("id") \
-            .eq("id", insert_data['service_id']) \
-            .eq("master_telegram_id", insert_data['master_telegram_id']) \
-            .execute()
-
-        if not service_check.data:
-            raise HTTPException(status_code=400, detail="Услуга не найдена или не принадлежит этому мастеру")
-
-        # 4. Вставка в БД
+        # Выполняем вставку в таблицу appointments.
+        # Если время уже занято, сработает UNIQUE INDEX, который мы создали в БД,
+        # и Supabase вернет ошибку.
         try:
             res = supabase.table("appointments").insert(insert_data).execute()
             if res.data:
                 return res.data[0]
         except Exception as e:
-            error_str = str(e).lower()
-            if "duplicate key" in error_str or "23505" in error_str:
-                raise HTTPException(status_code=409, detail="Извините, это время уже занято")
-
-            print(f"Database Error: {e}")
-            raise HTTPException(status_code=500, detail="Ошибка сохранения записи")
+            # Тут можно добавить логику обработки дубликатов (idempotency)
+            print(f"Database error: {e}")
+            raise e
