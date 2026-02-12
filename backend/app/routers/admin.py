@@ -5,10 +5,10 @@ import pytz
 import uuid
 import httpx
 
-from app.auth import validate_telegram_data
+from app.auth import get_current_user
 from app.db import supabase
 from app.utils import send_telegram_message, compress_image, escape_html
-from app.config import settings  # <--- [FIX] 1. Импортируем settings
+from app.config import settings
 from app.schemas.master import (
     MasterProfileUpdate, ServiceCreate, ServiceUpdate, WorkingHourItem
 )
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/me", tags=["Admin"])
 
 
 @router.get("")
-async def get_my_profile(user=Depends(validate_telegram_data)):
+async def get_my_profile(user=Depends(get_current_user)):
     tg_id = user['id']
     res = supabase.table("masters").select("*, is_premium, is_approved").eq("telegram_id", tg_id).execute()
     if not res.data:
@@ -32,7 +32,7 @@ async def get_my_profile(user=Depends(validate_telegram_data)):
 
 
 @router.patch("/profile")
-async def update_profile(data: MasterProfileUpdate, user=Depends(validate_telegram_data)):
+async def update_profile(data: MasterProfileUpdate, user=Depends(get_current_user)):
     tg_id = user['id']
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
 
@@ -46,7 +46,7 @@ async def update_profile(data: MasterProfileUpdate, user=Depends(validate_telegr
 
     if res.data:
         master = res.data[0]
-        # Если мастер заполнил название салона (регистрация), но еще не одобрен
+        # Уведомление о регистрации
         if master.get('salon_name') and not master.get('is_approved'):
             try:
                 admin_msg = (
@@ -59,10 +59,9 @@ async def update_profile(data: MasterProfileUpdate, user=Depends(validate_telegr
 
                 async with httpx.AsyncClient() as client:
                     await client.post(
-                        # [FIX] Используем settings
                         f"https://api.telegram.org/bot{settings.BOT_TOKEN}/sendMessage",
                         json={
-                            "chat_id": settings.ADMIN_CHAT_ID, # [FIX] Используем settings
+                            "chat_id": settings.ADMIN_CHAT_ID,
                             "text": admin_msg,
                             "parse_mode": "HTML"
                         }
@@ -74,7 +73,7 @@ async def update_profile(data: MasterProfileUpdate, user=Depends(validate_telegr
 
 
 @router.post("/upload-photo")
-async def upload_photo(file: UploadFile = File(...), user=Depends(validate_telegram_data)):
+async def upload_photo(file: UploadFile = File(...), user=Depends(get_current_user)):
     tg_id = user['id']
     res = supabase.table("masters").select("photos, is_premium").eq("telegram_id", tg_id).single().execute()
 
@@ -118,7 +117,7 @@ async def upload_photo(file: UploadFile = File(...), user=Depends(validate_teleg
 # --- Services ---
 
 @router.get("/services")
-async def get_services(user=Depends(validate_telegram_data)):
+async def get_services(user=Depends(get_current_user)):
     res = supabase.table("services") \
         .select("*") \
         .eq("master_telegram_id", user['id']) \
@@ -129,7 +128,7 @@ async def get_services(user=Depends(validate_telegram_data)):
 
 
 @router.post("/services")
-async def create_service(srv: ServiceCreate, user=Depends(validate_telegram_data)):
+async def create_service(srv: ServiceCreate, user=Depends(get_current_user)):
     master_info = supabase.table("masters").select("is_premium").eq("telegram_id", user['id']).single().execute()
     is_premium = master_info.data.get('is_premium', False)
 
@@ -153,7 +152,7 @@ async def create_service(srv: ServiceCreate, user=Depends(validate_telegram_data
 async def update_service(
         service_id: int,
         srv: ServiceUpdate,
-        user=Depends(validate_telegram_data)
+        user=Depends(get_current_user)
 ):
     update_data = srv.model_dump(exclude_unset=True)
     if not update_data:
@@ -171,7 +170,7 @@ async def update_service(
 
 
 @router.delete("/services/{sid}")
-async def delete_service(sid: int, user=Depends(validate_telegram_data)):
+async def delete_service(sid: int, user=Depends(get_current_user)):
     res = supabase.table("services") \
         .update({"is_active": False}) \
         .eq("id", sid) \
@@ -183,13 +182,13 @@ async def delete_service(sid: int, user=Depends(validate_telegram_data)):
 # --- Working Hours ---
 
 @router.get("/working-hours")
-async def get_hours(user=Depends(validate_telegram_data)):
+async def get_hours(user=Depends(get_current_user)):
     res = supabase.table("working_hours").select("*").eq("master_telegram_id", user['id']).execute()
     return res.data
 
 
 @router.post("/working-hours")
-async def set_hours(hours: List[WorkingHourItem], user=Depends(validate_telegram_data)):
+async def set_hours(hours: List[WorkingHourItem], user=Depends(get_current_user)):
     master_info = supabase.table("masters").select("is_premium").eq("telegram_id", user['id']).single().execute()
     is_premium = master_info.data.get('is_premium', False)
 
@@ -210,7 +209,7 @@ async def set_hours(hours: List[WorkingHourItem], user=Depends(validate_telegram
 # --- Appointments ---
 
 @router.get("/appointments")
-async def get_my_appointments(user=Depends(validate_telegram_data)):
+async def get_my_appointments(user=Depends(get_current_user)):
     res = supabase.table("appointments") \
         .select("*, services(name)") \
         .eq("master_telegram_id", user['id']) \
@@ -219,7 +218,7 @@ async def get_my_appointments(user=Depends(validate_telegram_data)):
     return res.data
 
 
-# --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ АДМИНСКИХ УВЕДОМЛЕНИЙ ---
+# --- [FIX] ВОТ ЭТА ФУНКЦИЯ ТЕПЕРЬ НА МЕСТЕ ---
 async def notify_client_status(aid: int, status: str, master_id: int):
     """
     Отправляет уведомление клиенту о смене статуса (подтверждение/отмена).
@@ -272,17 +271,18 @@ async def notify_client_status(aid: int, status: str, master_id: int):
             )
 
         if msg:
-            # [FIX] 2. Добавляем await, так как функция теперь асинхронная
+            # Используем await, так как send_telegram_message теперь асинхронная
             await send_telegram_message(appt['client_telegram_id'], msg)
     except Exception as e:
         print(f"Client notify error: {e}")
+# ---------------------------------------------
 
 
 @router.post("/appointments/{aid}/confirm")
 async def confirm_appointment(
         aid: int,
         background_tasks: BackgroundTasks,
-        user=Depends(validate_telegram_data)
+        user=Depends(get_current_user)
 ):
     res = supabase.table("appointments").update({"status": "confirmed"}) \
         .eq("id", aid).eq("master_telegram_id", user['id']).execute()
@@ -295,7 +295,7 @@ async def confirm_appointment(
 
 
 @router.post("/appointments/{aid}/complete")
-async def complete_appointment(aid: int, user=Depends(validate_telegram_data)):
+async def complete_appointment(aid: int, user=Depends(get_current_user)):
     res = supabase.table("appointments").update({"status": "completed"}) \
         .eq("id", aid).eq("master_telegram_id", user['id']).execute()
     return res.data
@@ -305,7 +305,7 @@ async def complete_appointment(aid: int, user=Depends(validate_telegram_data)):
 async def cancel_appointment(
         aid: int,
         background_tasks: BackgroundTasks,
-        user=Depends(validate_telegram_data)
+        user=Depends(get_current_user)
 ):
     res = supabase.table("appointments").update({"status": "cancelled"}) \
         .eq("id", aid).eq("master_telegram_id", user['id']).execute()
