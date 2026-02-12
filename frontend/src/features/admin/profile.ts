@@ -4,32 +4,43 @@ import { showToast } from '../../ui/toast';
 import { renderCarousel, uploadPhoto } from '../../ui/carousel';
 import { MasterProfile } from '../../types';
 
+// Объявляем IMask (так как он подключен через CDN в admin.html)
+declare const IMask: any;
+
 let currentPhotos: string[] = [];
 let originalData: Partial<MasterProfile> = {};
 let isPremium = false;
+// Храним инстансы масок, чтобы обновлять/удалять их
+let phoneMaskProfile: any = null;
+let phoneMaskReg: any = null;
 
 export async function loadProfile() {
     try {
         const data = await apiFetch<{ user: any, profile: MasterProfile }>('/me');
         const p = data.profile;
 
-        // [FIX] Логика одобрения
+        // 1. ПРОВЕРКА ОДОБРЕНИЯ (Приоритет №1)
+        // Если регистрация пройдена (есть имя), но нет одобрения
         if (p.salon_name && !p.is_approved) {
             show('approval-screen');
             hide('onboarding-screen');
-            // Блокируем показ основного интерфейса, пока нет одобрения
+            // ВАЖНО: Останавливаем загрузку, чтобы не показывать интерфейс
             return;
         } else {
             hide('approval-screen');
         }
 
-        // Если нет имени салона - регистрация
+        // 2. ПРОВЕРКА РЕГИСТРАЦИИ (Приоритет №2)
+        // Если нет имени салона - показываем онбординг
         if (!p.salon_name) {
             show('onboarding-screen');
-            return; // Тоже выходим, чтобы не грузить данные в поля
+            // Инициализируем маску для поля регистрации, если еще нет
+            initRegMask();
+            // ВАЖНО: Останавливаем загрузку, данные профиля не нужны
+            return;
         }
 
-        // Если все ок - скрываем экраны блокировки
+        // Если мы здесь - значит мастер зарегистрирован и одобрен
         hide('onboarding-screen');
         hide('approval-screen');
 
@@ -37,8 +48,15 @@ export async function loadProfile() {
 
         setVal('salon-name', p.salon_name || '');
         setVal('address', p.address || '');
-        setVal('phone', p.phone || '');
         setVal('description', p.description || '');
+
+        // Устанавливаем телефон и обновляем маску
+        const phoneInput = $('phone') as HTMLInputElement;
+        if (phoneInput) {
+            phoneInput.value = p.phone || '';
+            if (phoneMaskProfile) phoneMaskProfile.updateValue();
+            else initProfileMask();
+        }
 
         currentPhotos = p.photos || [];
         if (currentPhotos.length === 0 && p.avatar_url) {
@@ -49,6 +67,24 @@ export async function loadProfile() {
     } catch (e) {
         console.error("Profile load error:", e);
         showToast("Не удалось загрузить профиль", "error");
+    }
+}
+
+function initRegMask() {
+    const el = $('reg-phone') as HTMLInputElement;
+    if (el && !phoneMaskReg) {
+        phoneMaskReg = IMask(el, {
+            mask: '+{7} (000) 000-00-00'
+        });
+    }
+}
+
+function initProfileMask() {
+    const el = $('phone') as HTMLInputElement;
+    if (el && !phoneMaskProfile) {
+        phoneMaskProfile = IMask(el, {
+            mask: '+{7} (000) 000-00-00'
+        });
     }
 }
 
@@ -74,7 +110,11 @@ function updateCarousel(editMode: boolean) {
 }
 
 export function initProfileHandlers() {
-    // ... (код загрузки фото и togglEdit остается без изменений) ...
+    // Инициализируем маску профиля сразу (на всякий случай)
+    initProfileMask();
+    // И маску регистрации
+    initRegMask();
+
     const photoInput = $('photo-input') as HTMLInputElement;
     if (photoInput) {
         photoInput.onchange = async () => {
@@ -95,14 +135,19 @@ export function initProfileHandlers() {
     const toggleEdit = (enable: boolean) => {
         const inputs = ['salon-name', 'address', 'phone', 'description'];
         inputs.forEach(id => $(id)?.toggleAttribute('readonly', !enable));
+
         toggle('edit-actions', enable);
         toggle('btn-edit-mode', !enable);
+
         updateCarousel(enable);
+
         if (enable) {
+            // При входе в режим редактирования запоминаем данные
+            // Для телефона берем "чистое" значение маски (unmaskedValue) или текущее value
             originalData = {
                 salon_name: getVal('salon-name'),
                 address: getVal('address'),
-                phone: getVal('phone'),
+                phone: phoneMaskProfile ? phoneMaskProfile.value : getVal('phone'),
                 description: getVal('description'),
                 photos: [...currentPhotos]
             };
@@ -114,8 +159,13 @@ export function initProfileHandlers() {
     $('btn-cancel')!.onclick = () => {
         if(originalData.salon_name !== undefined) setVal('salon-name', originalData.salon_name);
         if(originalData.address !== undefined) setVal('address', originalData.address);
-        if(originalData.phone !== undefined) setVal('phone', originalData.phone);
         if(originalData.description !== undefined) setVal('description', originalData.description);
+
+        // Восстанавливаем телефон через маску
+        if(originalData.phone !== undefined && phoneMaskProfile) {
+            phoneMaskProfile.value = originalData.phone;
+        }
+
         currentPhotos = originalData.photos || [];
         toggleEdit(false);
     };
@@ -127,12 +177,15 @@ export function initProfileHandlers() {
         btn.textContent = 'Сохранение...';
 
         try {
+            // Берем телефон из маски (или обычного поля, если маска не сработала)
+            const phoneVal = phoneMaskProfile ? phoneMaskProfile.value : getVal('phone');
+
             await apiFetch('/me/profile', {
                 method: 'PATCH',
                 body: JSON.stringify({
                     salon_name: getVal('salon-name'),
                     address: getVal('address'),
-                    phone: getVal('phone'),
+                    phone: phoneVal,
                     description: getVal('description'),
                     photos: currentPhotos
                 })
@@ -147,21 +200,22 @@ export function initProfileHandlers() {
         }
     };
 
-    // [UPDATED] Регистрация с телефоном
+    // --- ЛОГИКА РЕГИСТРАЦИИ ---
     $('btn-finish-reg')!.onclick = async (e) => {
         const name = getVal('reg-name');
         const addr = getVal('reg-address');
-        const phone = getVal('reg-phone'); // [NEW] Берем телефон
+        // Берем телефон из маски регистрации
+        const phone = phoneMaskReg ? phoneMaskReg.value : getVal('reg-phone');
 
         if(!name.trim()) return showToast('Введите название салона', 'error');
-        // Можно добавить проверку телефона, если нужно
+        // Валидация телефона (простая)
+        if(phone.length < 10) return showToast('Введите корректный номер', 'error');
 
         const btn = e.target as HTMLButtonElement;
         btn.disabled = true;
         btn.textContent = 'Создаем...';
 
         try {
-            // [NEW] Отправляем телефон тоже
             await apiFetch('/me/profile', {
                 method: 'PATCH',
                 body: JSON.stringify({
@@ -171,15 +225,16 @@ export function initProfileHandlers() {
                 })
             });
 
-            // Обновляем поля в профиле (визуально)
+            // Обновляем UI (вдруг одобрение автоматическое)
             setVal('salon-name', name);
             setVal('address', addr);
-            setVal('phone', phone);
+            if (phoneMaskProfile) phoneMaskProfile.value = phone;
 
             hide('onboarding-screen');
             showToast('Заявка отправлена!');
 
-            // Перезагружаем профиль, чтобы сработала проверка is_approved
+            // Перезагрузка запустит loadProfile, который увидит is_approved=false
+            // и покажет экран "Заявка на проверке"
             loadProfile();
         } catch {
             showToast('Ошибка при создании', 'error');
@@ -188,7 +243,7 @@ export function initProfileHandlers() {
         }
     }
 
-    // [NEW] Кнопка проверки статуса без перезагрузки
+    // --- КНОПКА ПРОВЕРКИ СТАТУСА ---
     const checkBtn = $('btn-check-status');
     if (checkBtn) {
         checkBtn.onclick = async () => {
@@ -197,9 +252,11 @@ export function initProfileHandlers() {
             btn.textContent = 'Проверяю...';
             btn.disabled = true;
 
-            await loadProfile(); // Просто вызываем загрузку данных
+            await loadProfile();
 
-            // Если мы все еще здесь (значит is_approved = false), возвращаем кнопку
+            // Если мы всё еще здесь, значит статус не поменялся (return сработал в loadProfile).
+            // Возвращаем кнопку обратно.
+            // Если статус стал true, loadProfile сам скроет экран одобрения.
             setTimeout(() => {
                 btn.textContent = originalText;
                 btn.disabled = false;
