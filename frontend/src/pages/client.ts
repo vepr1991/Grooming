@@ -139,15 +139,18 @@ async function init() {
         if (nameInput) nameInput.value = `${user.first_name} ${user.last_name || ''}`.trim();
     }
 
+    // Инициализация загрузки фото
+    initPhotoUpload();
+
     // 1. Загружаем профиль
     loadedProfile = await loadMasterInfo(masterId);
 
     // 2. Получаем настройки и статус PRO
     const tz = loadedProfile?.timezone || 'Asia/Almaty';
-    const isPremium = loadedProfile?.is_premium || false; // [FIX] Получаем статус
+    const isPremium = loadedProfile?.is_premium || false;
 
     // 3. Инициализируем букинг с учетом статуса
-    setupBooking(masterId, tz, isPremium); // [FIX] Передаем 3-й аргумент
+    setupBooking(masterId, tz, isPremium);
 
     // 4. Загружаем услуги
     await loadServices(masterId, (service) => {
@@ -162,6 +165,49 @@ async function init() {
     // Глобальные хендлеры
     (window as any).openLegal = openLegal;
     (window as any).closeLegal = closeLegal;
+}
+
+// --- НОВАЯ ФУНКЦИЯ: ЛОГИКА ЗАГРУЗКИ ФОТО ---
+function initPhotoUpload() {
+    const input = $('inp-pet-photo') as HTMLInputElement;
+    const previewBox = $('photo-preview-box');
+    const previewImg = $('photo-preview-img') as HTMLImageElement;
+    const removeBtn = $('btn-remove-photo');
+    // Находим label, который является кнопкой загрузки (родитель инпута или сосед)
+    // В нашем HTML input находится ВНУТРИ label
+    const uploadLabel = input?.closest('label');
+
+    if (!input || !previewBox || !previewImg || !removeBtn || !uploadLabel) return;
+
+    // Обработка выбора файла
+    input.onchange = () => {
+        const file = input.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                // Устанавливаем картинку
+                previewImg.src = e.target?.result as string;
+                // Скрываем кнопку загрузки, показываем превью
+                uploadLabel.classList.add('hidden');
+                previewBox.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    // Обработка удаления файла
+    removeBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Очищаем инпут
+        input.value = '';
+        previewImg.src = '';
+
+        // Показываем кнопку загрузки обратно, скрываем превью
+        uploadLabel.classList.remove('hidden');
+        previewBox.classList.add('hidden');
+    };
 }
 
 // --- ФУНКЦИИ ИНТЕРФЕЙСА ---
@@ -253,7 +299,6 @@ async function openMyAppointments() {
     }
 }
 
-// [UPDATED] Генерация документов с данными мастера
 function openLegal(type: 'offer' | 'policy') {
     hide('view-booking');
     show('view-legal');
@@ -266,7 +311,6 @@ function openLegal(type: 'offer' | 'policy') {
 
     if(contentEl) contentEl.innerHTML = '';
 
-    // Генерируем данные "на лету", используя загруженный профиль
     const data = type === 'offer' ? getOfferData(loadedProfile) : getPolicyData(loadedProfile);
     const title = type === 'offer' ? 'Публичная оферта' : 'Политика обработки данных';
 
@@ -295,7 +339,6 @@ function closeLegal() {
     Telegram.WebApp.BackButton.onClick((window as any).goBack);
 }
 
-// Хелпер
 function createEl<K extends keyof HTMLElementTagNameMap>(
     tag: K,
     className?: string,

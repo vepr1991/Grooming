@@ -1,5 +1,5 @@
 import { $, setText, show, hide, getVal } from '../../core/dom';
-import { apiFetch, BASE_URL } from '../../core/api';
+import { apiFetch } from '../../core/api';
 import { Telegram } from '../../core/tg';
 import { Service } from '../../types';
 import { showToast } from '../../ui/toast';
@@ -9,8 +9,6 @@ let selectedDate: string | null = null;
 let selectedSlot: string | null = null;
 let masterId: string = '';
 let masterTimezone = 'Asia/Almaty';
-let uploadedPhotos: string[] = []; // [NEW] Массив загруженных фото
-let isMasterPremium = false; // [NEW] Статус мастера
 
 // Calendar state
 let viewDate = new Date();
@@ -37,135 +35,15 @@ function closeBooking() {
 
 (window as any).goBack = closeBooking;
 
-// [UPDATED] Принимаем isPremium
 export function setupBooking(mId: string, tz: string, isPremium: boolean = false) {
     masterId = mId;
     masterTimezone = tz || 'Asia/Almaty';
-    isMasterPremium = isPremium;
 
     const prevBtn = $('btn-prev-month');
     const nextBtn = $('btn-next-month');
 
     if (prevBtn) prevBtn.onclick = () => { viewDate.setMonth(viewDate.getMonth() - 1); renderCalendar(); };
     if (nextBtn) nextBtn.onclick = () => { viewDate.setMonth(viewDate.getMonth() + 1); renderCalendar(); };
-
-    // Инициализация загрузчика, если мастер PRO
-    initPhotoUploader();
-}
-
-// [NEW] Логика загрузки фото (Только для PRO)
-function initPhotoUploader() {
-    const container = document.querySelector('.group:has(#inp-pet-photo)') as HTMLElement;
-    const input = $('inp-pet-photo') as HTMLInputElement;
-    const preview = $('photo-preview') as HTMLImageElement;
-    const icon = $('photo-icon');
-    const loading = $('photo-loading');
-    const removeBtn = $('btn-remove-photo');
-    const label = $('photo-label');
-
-    // Если мастер не премиум или элементов нет — скрываем блок и выходим
-    if (!isMasterPremium || !container) {
-        if (container) container.style.display = 'none';
-        return;
-    }
-
-    // Показываем блок (на случай если он был скрыт)
-    container.style.display = 'block';
-
-    if (!input) return;
-
-    input.onchange = async () => {
-        const file = input.files?.[0];
-        if (!file) return;
-
-        if (loading) show(loading);
-
-        try {
-            // 1. Сжимаем
-            const compressedFile = await compressImage(file);
-
-            // 2. Загружаем
-            const url = await uploadClientPhoto(compressedFile);
-
-            // Сохраняем в массив (пока поддерживаем 1 фото для простоты UI, но шлем массив)
-            uploadedPhotos = [url];
-
-            // 3. Обновляем UI
-            if (preview) {
-                preview.src = URL.createObjectURL(compressedFile);
-                show(preview);
-            }
-            if (icon) hide(icon);
-            if (removeBtn) show(removeBtn);
-            if (label) label.textContent = 'Фото загружено';
-
-        } catch (e) {
-            console.error(e);
-            showToast('Ошибка загрузки фото', 'error');
-        } finally {
-            if (loading) hide(loading);
-            input.value = '';
-        }
-    };
-
-    if (removeBtn) {
-        removeBtn.onclick = () => {
-            uploadedPhotos = [];
-            if (preview) { preview.src = ''; hide(preview); }
-            if (icon) show(icon);
-            hide(removeBtn);
-            if (label) label.textContent = 'Нажмите, чтобы добавить фото';
-        };
-    }
-}
-
-// [NEW] Сжатие изображения (Canvas)
-async function compressImage(file: File): Promise<File> {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.src = URL.createObjectURL(file);
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return reject('Canvas error');
-
-            const MAX_SIZE = 1280;
-            let { width, height } = img;
-
-            if (width > height) {
-                if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-            } else {
-                if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            ctx.drawImage(img, 0, 0, width, height);
-
-            canvas.toBlob((blob) => {
-                if (blob) resolve(new File([blob], file.name, { type: 'image/jpeg' }));
-                else reject('Blob error');
-            }, 'image/jpeg', 0.8);
-        };
-        img.onerror = reject;
-    });
-}
-
-async function uploadClientPhoto(file: File): Promise<string> {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const headers: HeadersInit = {};
-    const initData = Telegram.WebApp.initData || '';
-    if (initData) headers['Authorization'] = `tma ${initData}`;
-
-    const response = await fetch(`${BASE_URL}/upload-pet-photo`, {
-        method: 'POST', headers, body: formData
-    });
-
-    if (!response.ok) throw new Error('Upload failed');
-    const data = await response.json();
-    return data.url;
 }
 
 export function openBooking(service: Service, onBack: () => void) {
@@ -174,19 +52,17 @@ export function openBooking(service: Service, onBack: () => void) {
     selectedSlot = null;
     onBackCallback = onBack;
 
-    // Сброс фото при новом открытии
-    uploadedPhotos = [];
-    const preview = $('photo-preview') as HTMLImageElement;
-    const icon = $('photo-icon');
-    const removeBtn = $('btn-remove-photo');
-    const label = $('photo-label');
-
-    if(preview) { hide(preview); preview.src = ''; }
-    if(icon) show(icon);
-    if(removeBtn) hide(removeBtn);
-    if(label) label.textContent = 'Нажмите, чтобы добавить фото';
-
     setText('selected-service-name', `${service.name} • ${service.price} ₸`);
+
+    // Сбрасываем форму (включая фото)
+    const photoInput = $('inp-pet-photo') as HTMLInputElement;
+    const previewBox = $('photo-preview-box');
+    const uploadLabel = photoInput?.closest('label');
+
+    if (photoInput) photoInput.value = '';
+    if (previewBox) previewBox.classList.add('hidden');
+    if (uploadLabel) uploadLabel.classList.remove('hidden');
+
     hide('view-home');
     show('view-booking');
     hide('slots-container');
@@ -197,6 +73,11 @@ export function openBooking(service: Service, onBack: () => void) {
 
     viewDate = new Date();
     const today = new Date();
+
+    // Выбираем дату в календаре
+    renderCalendar();
+
+    // Автоматически выбираем сегодня, если время позволяет, или просто рендерим календарь
     selectDate(`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`);
 }
 
@@ -205,7 +86,15 @@ function selectDate(dateStr: string) {
     selectedSlot = null;
     hide('booking-form');
     Telegram.WebApp.MainButton.hide();
-    renderCalendar();
+
+    // Обновляем UI календаря (подсветка выбранной даты)
+    const days = document.querySelectorAll('.day-cell');
+    days.forEach(d => {
+        d.classList.remove('selected');
+        // Логика подсветки реализована внутри renderCalendar, но при клике обновляем:
+        renderCalendar();
+    });
+
     loadSlots(dateStr);
 }
 
@@ -222,6 +111,7 @@ function renderCalendar() {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
     gridEl.innerHTML = '';
+    // Пустые ячейки до начала месяца
     for (let i = 1; i < firstDay; i++) gridEl.appendChild(createEl('div'));
 
     const today = new Date(); today.setHours(0,0,0,0);
@@ -232,10 +122,10 @@ function renderCalendar() {
         const isPast = date < today;
         const isSelected = selectedDate === isoDate;
 
-        let cls = 'day-cell';
-        if (date.getTime() === today.getTime()) cls += ' today';
-        if (isSelected) cls += ' selected';
-        if (isPast) cls += ' disabled';
+        let cls = 'day-cell p-2 rounded-lg font-bold text-sm cursor-pointer hover:bg-surface transition-colors text-white';
+        if (date.getTime() === today.getTime()) cls += ' border border-primary text-primary';
+        if (isSelected) cls = 'day-cell p-2 rounded-lg font-bold text-sm bg-primary text-white shadow-lg transform scale-105';
+        if (isPast) cls = 'day-cell p-2 text-text-secondary/20 cursor-not-allowed';
 
         const cell = createEl('div', cls, d.toString());
         if (!isPast) cell.onclick = () => selectDate(isoDate);
@@ -247,42 +137,65 @@ async function loadSlots(date: string) {
     show('slots-container');
     const grid = $('slots-grid');
     if(!grid) return;
-    grid.innerHTML = '<div class="col-span-4 text-center text-secondary text-sm py-4">Поиск окошек...</div>';
+    grid.innerHTML = '<div class="col-span-4 text-center text-text-secondary text-sm py-4 animate-pulse">Поиск окошек...</div>';
 
     try {
         const slots = await apiFetch<string[]>(`/masters/${masterId}/availability?date=${date}&service_id=${selectedService!.id}`);
         grid.innerHTML = '';
 
         if (slots.length === 0) {
-            grid.innerHTML = '<div class="col-span-4 text-center text-secondary/50 text-sm py-2">Нет мест</div>';
+            grid.innerHTML = '<div class="col-span-4 text-center text-text-secondary/50 text-sm py-2">Нет мест на этот день</div>';
             return;
         }
 
         slots.forEach((isoTime) => {
             const time = new Date(isoTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: masterTimezone });
-            const btn = createEl('button', 'slot-btn', time);
+
+            // Стилизация кнопок времени
+            const btn = createEl('button', 'py-2 px-1 bg-surface border border-border rounded-xl text-white font-bold text-sm hover:border-primary focus:bg-primary focus:border-primary transition-all', time);
+
             btn.onclick = () => {
-                document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
+                // Снимаем выделение с других
+                Array.from(grid.children).forEach(child => {
+                    child.className = 'py-2 px-1 bg-surface border border-border rounded-xl text-white font-bold text-sm hover:border-primary transition-all';
+                });
+                // Выделяем текущую
+                btn.className = 'py-2 px-1 bg-primary border-primary rounded-xl text-white font-bold text-sm shadow-lg ring-2 ring-primary/30';
+
                 selectedSlot = isoTime;
                 showBookingForm();
             };
             grid.appendChild(btn);
         });
     } catch {
-        grid.innerHTML = '<div class="col-span-4 text-center text-error text-sm">Ошибка загрузки</div>';
+        grid.innerHTML = '<div class="col-span-4 text-center text-red-400 text-sm">Ошибка загрузки расписания</div>';
     }
 }
 
 function showBookingForm() {
     show('booking-form');
-    setTimeout(() => $('booking-form')?.scrollIntoView({ behavior: 'smooth' }), 100);
+    // Плавный скролл к форме
+    setTimeout(() => {
+        const form = document.getElementById('booking-form');
+        if(form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+
     if (selectedService) {
         Telegram.WebApp.MainButton.setText(`ЗАПИСАТЬСЯ • ${selectedService.price} ₸`);
         Telegram.WebApp.MainButton.show();
         Telegram.WebApp.MainButton.onClick(submitBooking);
     }
 }
+
+// Хелпер для конвертации файла в Base64
+const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+    });
+};
 
 async function submitBooking() {
     const name = getVal('inp-client-name').trim();
@@ -295,6 +208,19 @@ async function submitBooking() {
     Telegram.WebApp.MainButton.showProgress();
 
     try {
+        // 1. Проверяем, есть ли фото и конвертируем его
+        let photoBase64 = null;
+        const photoInput = $('inp-pet-photo') as HTMLInputElement;
+        if (photoInput && photoInput.files && photoInput.files[0]) {
+            try {
+                // Конвертируем в Base64 (строку)
+                photoBase64 = await fileToBase64(photoInput.files[0]);
+            } catch (e) {
+                console.error("Ошибка обработки фото", e);
+            }
+        }
+
+        // 2. Формируем данные
         const payload = {
             master_telegram_id: parseInt(masterId),
             service_id: selectedService!.id,
@@ -304,13 +230,15 @@ async function submitBooking() {
             client_username: Telegram.WebApp.initDataUnsafe?.user?.username || null,
             pet_name: getVal('inp-pet-name').trim(),
             pet_breed: getVal('inp-pet-breed').trim() || null,
-            pet_photos: uploadedPhotos, // [UPDATED] Отправляем массив
-            comment: getVal('inp-comment').trim() || null
+            comment: getVal('inp-comment').trim() || null,
+            // Добавляем поле с фото (Backend должен его обработать)
+            pet_photo: photoBase64
         };
 
+        // 3. Отправляем
         await apiFetch('/appointments', { method: 'POST', body: JSON.stringify(payload) });
 
-        if (selectedDate && selectedSlot) {
+        if (selectedSlot) {
             const d = new Date(selectedSlot);
             const timeStr = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: masterTimezone });
             const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
@@ -327,6 +255,7 @@ async function submitBooking() {
             showToast('Это время уже занято', 'error');
             if (selectedDate) loadSlots(selectedDate);
         } else {
+            console.error(e);
             showToast('Ошибка при записи', 'error');
         }
     }
