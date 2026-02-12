@@ -1,4 +1,3 @@
-import os
 from supabase import create_client, Client
 from .config import settings  # <--- Импортируем settings вместо переменных
 
