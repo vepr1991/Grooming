@@ -47,6 +47,11 @@
           background-color: transparent; border-color: var(--c-border);
       }
       .text-fixed-white { color: #ffffff !important; }
+
+      /* Поддержка Safe Area для iPhone */
+      .safe-top-padding {
+          top: max(24px, env(safe-area-inset-top) + 24px);
+      }
     </style>
   </head>
   <body class="bg-background-dark font-display text-white antialiased selection:bg-primary/30">
@@ -362,10 +367,10 @@
 
     <script type="module" src="./src/pages/admin.ts"></script>
 
-    <div id="gallery-modal" class="fixed inset-0 z-[999] bg-black/95 hidden flex items-center justify-center animate-in fade-in duration-300 select-none opacity-0 transition-opacity" aria-hidden="true">
+    <div id="gallery-modal" class="fixed inset-0 z-[999] bg-black/95 hidden flex items-center justify-center animate-in fade-in duration-300 select-none opacity-0 transition-opacity touch-none" aria-hidden="true">
 
-        <button onclick="closeGallery()" class="absolute top-6 right-6 p-2 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors z-[1000] backdrop-blur-md">
-            <span class="material-symbols-outlined text-[28px]">close</span>
+        <button onclick="closeGallery()" class="absolute safe-top-padding right-6 z-[9999] p-3 text-white bg-black/60 hover:bg-black/80 rounded-full backdrop-blur-md transition-all shadow-lg active:scale-90 flex items-center justify-center">
+            <span class="material-symbols-outlined text-[28px] font-bold">close</span>
         </button>
 
         <div id="gallery-loader" class="absolute inset-0 flex items-center justify-center z-[998] hidden">
@@ -377,17 +382,17 @@
                 id="gallery-img"
                 src=""
                 alt="Gallery Image"
-                class="max-w-full max-h-full object-contain shadow-2xl transition-all duration-300 scale-95 opacity-0"
+                class="max-w-full max-h-full object-contain shadow-2xl transition-all duration-300 scale-95 opacity-0 select-none pointer-events-none"
             >
         </div>
 
-        <div id="gallery-counter" class="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/60 text-sm font-medium bg-black/20 px-3 py-1 rounded-full backdrop-blur-md z-[1000]">
+        <div id="gallery-counter" class="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/80 text-sm font-bold bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-md z-[1000] border border-white/10">
             1 / 1
         </div>
     </div>
 
     <script>
-        // --- SWIPE GALLERY LOGIC (No Buttons) ---
+        // --- SWIPE GALLERY LOGIC ---
 
         const galleryState = {
             images: [],
@@ -417,7 +422,7 @@
 
             // Add listeners
             document.addEventListener('keydown', handleGalleryKeydown);
-            elModal.addEventListener('touchstart', handleTouchStart);
+            elModal.addEventListener('touchstart', handleTouchStart, {passive: true});
             elModal.addEventListener('touchend', handleTouchEnd);
         };
 
@@ -483,7 +488,8 @@
             elLoader.classList.remove('hidden'); // Show loader
             elImg.classList.add('opacity-50', 'scale-95');
 
-            // Preload next image
+            // Preload next image logic replaced by instant source swap + loader
+            // This is faster perception
             const tempImg = new Image();
             tempImg.src = images[currentIndex];
 
