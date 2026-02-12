@@ -76,3 +76,5 @@ CREATE TABLE IF NOT EXISTS appointments (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_slot
 ON appointments (master_telegram_id, starts_at)
 WHERE status != 'cancelled';
+
+ALTER TABLE masters ADD COLUMN is_approved BOOLEAN DEFAULT FALSE;

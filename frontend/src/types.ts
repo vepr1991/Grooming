@@ -19,6 +19,7 @@ export interface MasterProfile {
     photos: string[];
     timezone: string;
     is_premium: boolean;
+    is_approved?: boolean;
 }
 
 export interface WorkingHour {
