@@ -4,43 +4,48 @@ import { apiFetch } from '../../core/api';
 export async function loadAnalytics() {
     const content = $('analytics-content');
     const lock = $('analytics-lock');
+
+    // Защита: если элементов нет, просто выходим
     if (!content || !lock) return;
 
     try {
-        // Загружаем данные дашборда
         const data = await apiFetch<any>('/me/analytics/dashboard');
 
-        // Проверка статуса PREMIUM
+        // Проверка: Если не премиум
         if (!data.is_premium) {
+            console.log('User is not premium, showing lock');
             show(lock);
             hide(content);
             return;
         }
 
-        // Если премиум — скрываем замок и показываем контент
+        // Если премиум
         hide(lock);
         show(content);
-        content.classList.add('flex');
+        // Принудительно ставим flex, чтобы верстка не поехала
+        content.style.display = 'flex';
 
-        // 1. Основные показатели (KPI)
-        setText('an-revenue', `${data.kpi.revenue.toLocaleString()} ₸`);
-        setText('an-avg', `${data.kpi.avg_check.toLocaleString()} ₸`);
+        // 1. Заполняем KPI (безопасная проверка на существование полей)
+        if (data.kpi) {
+            setText('an-revenue', `${data.kpi.revenue?.toLocaleString() || 0} ₸`);
+            setText('an-avg', `${data.kpi.avg_check?.toLocaleString() || 0} ₸`);
+        }
 
-        // 2. Популярные услуги
+        // 2. Топ услуг
         const topContainer = $('an-top-services');
         if (topContainer) {
             topContainer.innerHTML = '';
-            const max = Math.max(...data.top_services.map((s: any) => s.count)) || 1;
+            const services = data.top_services || [];
+            const max = Math.max(...services.map((s: any) => s.count)) || 1;
 
-            if (data.top_services.length === 0) {
+            if (services.length === 0) {
                  const p = document.createElement('p');
                  p.className = "text-xs text-text-secondary text-center";
                  p.textContent = "Нет данных";
                  topContainer.appendChild(p);
             } else {
-                data.top_services.forEach((s: any) => {
+                services.forEach((s: any) => {
                     const percent = (s.count / max) * 100;
-
                     const item = document.createElement('div');
                     item.className = "flex flex-col gap-1.5";
 
@@ -73,16 +78,17 @@ export async function loadAnalytics() {
             }
         }
 
-        // 3. График динамики (Bar Chart)
+        // 3. График динамики
         const barsContainer = $('an-chart-bars');
         const labelsContainer = $('an-chart-labels');
         if (barsContainer && labelsContainer) {
             barsContainer.innerHTML = '';
             labelsContainer.innerHTML = '';
 
-            const maxVal = Math.max(...data.daily_dynamics.map((d: any) => d.value)) || 5;
+            const dynamics = data.daily_dynamics || [];
+            const maxVal = Math.max(...dynamics.map((d: any) => d.value)) || 5;
 
-            data.daily_dynamics.forEach((day: any) => {
+            dynamics.forEach((day: any) => {
                 const height = (day.value / maxVal) * 100;
                 const color = day.is_today ? 'bg-primary' : 'bg-primary/40';
 
@@ -103,13 +109,13 @@ export async function loadAnalytics() {
 
                 const label = document.createElement('span');
                 label.className = "text-[9px] text-text-secondary font-bold uppercase w-full text-center truncate";
-                label.textContent = day.day.split(' ')[0];
+                label.textContent = day.day ? day.day.split(' ')[0] : '';
                 labelsContainer.appendChild(label);
             });
         }
 
-        // 4. Распределение по статусам (Pie Chart)
-        const s = data.status_distribution;
+        // 4. Пай чарт (Статусы)
+        const s = data.status_distribution || { completed: 0, cancelled: 0, pending: 0 };
         const total = s.completed + s.cancelled + s.pending;
         setText('an-total-count', total.toString());
 
@@ -137,14 +143,17 @@ export async function loadAnalytics() {
             }
         }
 
-        // 5. Интеллектуальный совет
-        const advice = data.top_services.length > 0
+        // 5. Совет
+        const advice = (data.top_services && data.top_services.length > 0)
             ? `Услуга "${data.top_services[0].name}" в топе! Попробуйте создать пакетное предложение с ней.`
             : 'Заполните график и добавьте услуги, чтобы начать работу.';
         setText('an-advice', advice);
 
     } catch (e) {
-        console.error("Ошибка загрузки аналитики:", e);
+        console.error("Analytics load error:", e);
+        // Безопасный режим: при ошибке показываем замок, а не пустой экран
+        show(lock);
+        hide(content);
     }
 }
 
@@ -152,7 +161,6 @@ function createLegendItem(label: string, val: number, total: number, bgClass: st
     if (val === 0) return document.createDocumentFragment();
 
     const percent = Math.round((val / total) * 100);
-
     const container = document.createElement('div');
     container.className = "flex items-center justify-between";
 
