@@ -9,6 +9,7 @@ let selectedDate: string | null = null;
 let selectedSlot: string | null = null;
 let masterId: string = '';
 let masterTimezone = 'Asia/Almaty';
+let isMasterPremium = false; // [FIX] Добавили переменную для хранения статуса
 
 // Calendar state
 let viewDate = new Date();
@@ -35,10 +36,11 @@ function closeBooking() {
 
 (window as any).goBack = closeBooking;
 
-// [FIX] Добавил _, чтобы TS не ругался на неиспользуемую переменную
-export function setupBooking(mId: string, tz: string, _isPremium: boolean = false) {
+// [FIX] Используем isPremium нормально
+export function setupBooking(mId: string, tz: string, isPremium: boolean = false) {
     masterId = mId;
     masterTimezone = tz || 'Asia/Almaty';
+    isMasterPremium = isPremium; // Сохраняем статус
 
     const prevBtn = $('btn-prev-month');
     const nextBtn = $('btn-next-month');
@@ -59,10 +61,20 @@ export function openBooking(service: Service, onBack: () => void) {
     const photoInput = $('inp-pet-photo') as HTMLInputElement;
     const previewBox = $('photo-preview-box');
     const uploadLabel = photoInput?.closest('label');
+    const photoContainer = $('photo-upload-container'); // Находим сам блок
 
     if (photoInput) photoInput.value = '';
     if (previewBox) previewBox.classList.add('hidden');
     if (uploadLabel) uploadLabel.classList.remove('hidden');
+
+    // [FIX] Логика отображения: Показываем только если мастер Premium
+    if (photoContainer) {
+        if (isMasterPremium) {
+            photoContainer.classList.remove('hidden');
+        } else {
+            photoContainer.classList.add('hidden');
+        }
+    }
 
     hide('view-home');
     show('view-booking');
@@ -75,10 +87,7 @@ export function openBooking(service: Service, onBack: () => void) {
     viewDate = new Date();
     const today = new Date();
 
-    // Выбираем дату в календаре
     renderCalendar();
-
-    // Автоматически выбираем сегодня, если время позволяет, или просто рендерим календарь
     selectDate(`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`);
 }
 
@@ -88,7 +97,6 @@ function selectDate(dateStr: string) {
     hide('booking-form');
     Telegram.WebApp.MainButton.hide();
 
-    // Обновляем UI календаря (подсветка выбранной даты)
     const days = document.querySelectorAll('.day-cell');
     days.forEach(d => {
         d.classList.remove('selected');
@@ -111,7 +119,6 @@ function renderCalendar() {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
     gridEl.innerHTML = '';
-    // Пустые ячейки до начала месяца
     for (let i = 1; i < firstDay; i++) gridEl.appendChild(createEl('div'));
 
     const today = new Date(); today.setHours(0,0,0,0);
@@ -150,7 +157,6 @@ async function loadSlots(date: string) {
 
         slots.forEach((isoTime) => {
             const time = new Date(isoTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: masterTimezone });
-
             const btn = createEl('button', 'py-2 px-1 bg-surface border border-border rounded-xl text-white font-bold text-sm hover:border-primary focus:bg-primary focus:border-primary transition-all', time);
 
             btn.onclick = () => {
@@ -158,7 +164,6 @@ async function loadSlots(date: string) {
                     child.className = 'py-2 px-1 bg-surface border border-border rounded-xl text-white font-bold text-sm hover:border-primary transition-all';
                 });
                 btn.className = 'py-2 px-1 bg-primary border-primary rounded-xl text-white font-bold text-sm shadow-lg ring-2 ring-primary/30';
-
                 selectedSlot = isoTime;
                 showBookingForm();
             };
@@ -183,7 +188,6 @@ function showBookingForm() {
     }
 }
 
-// Хелпер для конвертации файла в Base64
 const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -205,12 +209,15 @@ async function submitBooking() {
 
     try {
         let photoBase64 = null;
-        const photoInput = $('inp-pet-photo') as HTMLInputElement;
-        if (photoInput && photoInput.files && photoInput.files[0]) {
-            try {
-                photoBase64 = await fileToBase64(photoInput.files[0]);
-            } catch (e) {
-                console.error("Ошибка обработки фото", e);
+        // [FIX] Обрабатываем фото только если мастер Premium
+        if (isMasterPremium) {
+            const photoInput = $('inp-pet-photo') as HTMLInputElement;
+            if (photoInput && photoInput.files && photoInput.files[0]) {
+                try {
+                    photoBase64 = await fileToBase64(photoInput.files[0]);
+                } catch (e) {
+                    console.error("Ошибка обработки фото", e);
+                }
             }
         }
 
@@ -224,8 +231,7 @@ async function submitBooking() {
             pet_name: getVal('inp-pet-name').trim(),
             pet_breed: getVal('inp-pet-breed').trim() || null,
             comment: getVal('inp-comment').trim() || null,
-            // [FIX] Переименовали, чтобы совпадало с бэкендом
-            pet_photo_base64: photoBase64
+            pet_photo_base64: photoBase64 // Отправляем фото (или null)
         };
 
         await apiFetch('/appointments', { method: 'POST', body: JSON.stringify(payload) });
