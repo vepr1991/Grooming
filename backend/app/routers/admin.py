@@ -3,12 +3,12 @@ from typing import List
 from datetime import datetime
 import pytz
 import uuid
-import httpx  # [NEW] Нужен для отправки запроса в Telegram
+import httpx
 
 from app.auth import validate_telegram_data
 from app.db import supabase
 from app.utils import send_telegram_message, compress_image, escape_html
-from app.config import BOT_TOKEN, ADMIN_CHAT_ID  # [NEW] Импортируем настройки
+from app.config import settings  # <--- [FIX] 1. Импортируем settings
 from app.schemas.master import (
     MasterProfileUpdate, ServiceCreate, ServiceUpdate, WorkingHourItem
 )
@@ -19,7 +19,6 @@ router = APIRouter(prefix="/me", tags=["Admin"])
 @router.get("")
 async def get_my_profile(user=Depends(validate_telegram_data)):
     tg_id = user['id']
-    # Выбираем is_approved
     res = supabase.table("masters").select("*, is_premium, is_approved").eq("telegram_id", tg_id).execute()
     if not res.data:
         new_user = {
@@ -47,7 +46,6 @@ async def update_profile(data: MasterProfileUpdate, user=Depends(validate_telegr
 
     if res.data:
         master = res.data[0]
-        # [NEW] Логика уведомления Админа
         # Если мастер заполнил название салона (регистрация), но еще не одобрен
         if master.get('salon_name') and not master.get('is_approved'):
             try:
@@ -59,12 +57,12 @@ async def update_profile(data: MasterProfileUpdate, user=Depends(validate_telegr
                     f"👉 Зайди в базу и поставь is_approved = TRUE"
                 )
 
-                # Отправляем асинхронно, чтобы не тормозить ответ пользователю
                 async with httpx.AsyncClient() as client:
                     await client.post(
-                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                        # [FIX] Используем settings
+                        f"https://api.telegram.org/bot{settings.BOT_TOKEN}/sendMessage",
                         json={
-                            "chat_id": ADMIN_CHAT_ID,
+                            "chat_id": settings.ADMIN_CHAT_ID, # [FIX] Используем settings
                             "text": admin_msg,
                             "parse_mode": "HTML"
                         }
@@ -274,7 +272,8 @@ async def notify_client_status(aid: int, status: str, master_id: int):
             )
 
         if msg:
-            send_telegram_message(appt['client_telegram_id'], msg)
+            # [FIX] 2. Добавляем await, так как функция теперь асинхронная
+            await send_telegram_message(appt['client_telegram_id'], msg)
     except Exception as e:
         print(f"Client notify error: {e}")
 
@@ -282,7 +281,7 @@ async def notify_client_status(aid: int, status: str, master_id: int):
 @router.post("/appointments/{aid}/confirm")
 async def confirm_appointment(
         aid: int,
-        background_tasks: BackgroundTasks,  # [FIX]
+        background_tasks: BackgroundTasks,
         user=Depends(validate_telegram_data)
 ):
     res = supabase.table("appointments").update({"status": "confirmed"}) \
@@ -305,7 +304,7 @@ async def complete_appointment(aid: int, user=Depends(validate_telegram_data)):
 @router.post("/appointments/{aid}/cancel")
 async def cancel_appointment(
         aid: int,
-        background_tasks: BackgroundTasks,  # [FIX]
+        background_tasks: BackgroundTasks,
         user=Depends(validate_telegram_data)
 ):
     res = supabase.table("appointments").update({"status": "cancelled"}) \
