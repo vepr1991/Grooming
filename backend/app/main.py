@@ -1,17 +1,15 @@
 # (c) 2026 Владимир Коваленко. Все права защищены.
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from app.auth import validate_telegram_data
 from app.routers import admin, client, analytics
 
 app = FastAPI(title="Grooming TMA API")
 
-# Настройка CORS - ОБЯЗАТЕЛЬНО добавили порт 5173
+# Настройка CORS - разрешаем твой локальный React и Render
 ORIGINS = [
     "http://localhost:3000",
     "http://localhost:8000",
-    "http://localhost:5173",  # Твой локальный React
+    "http://localhost:5173",
     "https://grooming-tma-frontend.onrender.com",
     "https://web.telegram.org",
     "https://a.web.telegram.org",
@@ -27,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Подключаем роутеры с ПРЕФИКСАМИ. Теперь /client/masters/ будет работать.
+# Подключаем роутеры с префиксами. Теперь /client/masters/ будет работать!
 app.include_router(admin.router, prefix="/admin")
 app.include_router(client.router, prefix="/client")
 app.include_router(analytics.router, prefix="/analytics")
