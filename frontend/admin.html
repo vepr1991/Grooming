@@ -369,9 +369,11 @@
 
     <div id="gallery-modal" class="fixed inset-0 z-[9999] bg-black hidden flex items-center justify-center animate-in fade-in duration-200 select-none opacity-0 transition-opacity" aria-hidden="true">
 
-        <button onclick="closeGallery()" class="absolute safe-top-padding right-6 z-[10000] p-2 bg-white text-black rounded-full shadow-2xl active:scale-90 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer">
-            <span class="material-symbols-outlined text-[28px] font-black">close</span>
-        </button>
+<button onclick="closeGallery()"
+  class="fixed safe-top-padding right-6 z-[99999] p-2 bg-white text-black rounded-full shadow-2xl active:scale-90 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer">
+    <span class="material-symbols-outlined text-[28px] font-black">close</span>
+</button>
+
 
         <div class="absolute inset-x-4 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none z-[10000]">
             <button id="gallery-prev" onclick="galleryPrev()" class="p-2 bg-white text-black rounded-full shadow-2xl transition-all pointer-events-auto active:scale-90 flex items-center justify-center hover:scale-110 cursor-pointer opacity-90 hover:opacity-100">
