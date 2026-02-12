@@ -15,7 +15,7 @@ initTelegram();
 const urlParams = new URLSearchParams(window.location.search);
 const masterId = urlParams.get('start_param') || '579214945';
 
-// Глобальная переменная для хранения профиля мастера (чтобы использовать в документах)
+// Глобальная переменная для хранения профиля мастера
 let loadedProfile: MasterProfile | null = null;
 
 // --- ГЕНЕРАТОР ЮРИДИЧЕСКИХ ТЕКСТОВ ---
@@ -73,7 +73,7 @@ function getOfferData(p: MasterProfile | null) {
                 `Наименование: ${name}`,
                 `Адрес: ${address}`,
                 `Телефон: ${phone}`,
-                `БИН/ИИН: [ЗАПОЛНИТЬ ПРИ РЕГИСТРАЦИИ]` // Плейсхолдер, так как в API этого поля пока нет
+                `БИН/ИИН: [ЗАПОЛНИТЬ ПРИ РЕГИСТРАЦИИ]`
             ]
         }
     ];
@@ -139,12 +139,17 @@ async function init() {
         if (nameInput) nameInput.value = `${user.first_name} ${user.last_name || ''}`.trim();
     }
 
-    // Загружаем профиль и сохраняем его в глобальную переменную
+    // 1. Загружаем профиль
     loadedProfile = await loadMasterInfo(masterId);
 
+    // 2. Получаем настройки и статус PRO
     const tz = loadedProfile?.timezone || 'Asia/Almaty';
-    setupBooking(masterId, tz);
+    const isPremium = loadedProfile?.is_premium || false; // [FIX] Получаем статус
 
+    // 3. Инициализируем букинг с учетом статуса
+    setupBooking(masterId, tz, isPremium); // [FIX] Передаем 3-й аргумент
+
+    // 4. Загружаем услуги
     await loadServices(masterId, (service) => {
         openBooking(service, () => {});
     });

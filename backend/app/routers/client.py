@@ -1,7 +1,8 @@
 # (c) 2026 Владимир Коваленко. Все права защищены.
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File  # [FIX] Added UploadFile, File
 from datetime import datetime, timedelta
 import pytz
+import uuid  # [FIX] Added uuid
 
 from app.auth import validate_telegram_data
 from app.db import supabase
@@ -184,6 +185,36 @@ async def get_client_appointments(user=Depends(validate_telegram_data)):
     return res.data
 
 
+# [NEW] Эндпоинт для загрузки фото
+@router.post("/upload-pet-photo")
+async def upload_pet_photo(
+        file: UploadFile = File(...),
+        user=Depends(validate_telegram_data)
+):
+    """Загрузка фото питомца (клиент)"""
+    file_ext = file.filename.split('.')[-1] if '.' in file.filename else "jpg"
+    # Сохраняем в папку clients/{telegram_id}/random_uuid.jpg
+    file_path = f"clients/{user['id']}/{uuid.uuid4()}.{file_ext}"
+
+    file_content = await file.read()
+
+    try:
+        # Используем тот же бакет, что и для аватаров, или новый 'photos'
+        # Убедитесь, что бакет 'avatars' существует и открыт (public)
+        bucket_name = "avatars"
+
+        supabase.storage.from_(bucket_name).upload(
+            file_path,
+            file_content,
+            file_options={"content-type": file.content_type, "upsert": "true"}
+        )
+
+        public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
+        return {"url": public_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
+
+
 # --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ФОНОВОГО УВЕДОМЛЕНИЯ ---
 async def send_new_appointment_notification(new_appt: dict):
     """Отправляет уведомление мастеру в фоне, чтобы не тормозить API"""
@@ -193,14 +224,17 @@ async def send_new_appointment_notification(new_appt: dict):
             srv_res = supabase.table("services").select("name").eq("id", new_appt['service_id']).single().execute()
             if srv_res.data:
                 service_name = escape_html(srv_res.data.get('name', 'Услуга'))
-        except: pass
+        except:
+            pass
 
         tz_name = 'Asia/Almaty'
         try:
-            master_res = supabase.table("masters").select("timezone").eq("telegram_id", new_appt['master_telegram_id']).single().execute()
+            master_res = supabase.table("masters").select("timezone").eq("telegram_id", new_appt[
+                'master_telegram_id']).single().execute()
             if master_res.data and master_res.data.get('timezone'):
                 tz_name = master_res.data['timezone']
-        except: pass
+        except:
+            pass
 
         try:
             utc_dt = datetime.fromisoformat(new_appt['starts_at'].replace('Z', '+00:00'))
@@ -230,13 +264,19 @@ async def send_new_appointment_notification(new_appt: dict):
         if safe_comment:
             comment_section = f"\n💬 Комментарий: {safe_comment}"
 
+        # [NEW] Добавляем пометку, что есть фото
+        photo_info = ""
+        if new_appt.get('pet_photos') and len(new_appt['pet_photos']) > 0:
+            photo_info = "\n📷 <b>Прикреплено фото питомца</b>"
+
         msg = (
             f"🆕 <b>Новая запись!</b>\n\n"
             f"{client_line}\n"
             f"📞 Телефон: {safe_phone}\n"
             f"{pet_line}\n"
             f"✂️ Услуга: {service_name}\n"
-            f"🗓 Время: {date_str}\n\n"
+            f"🗓 Время: {date_str}\n"
+            f"{photo_info}\n"
             f"{comment_section}"
         )
         send_telegram_message(new_appt['master_telegram_id'], msg)
