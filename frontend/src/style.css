@@ -177,3 +177,10 @@ p { color: var(--c-text-sec); }
     box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; min-width: 200px; 
 }
 .toast.hidden { opacity: 0; transform: translateX(-50%) translateY(10px); }
+
+/* В конец файла или в блок базовых стилей */
+input:focus, textarea:focus {
+    outline: none !important;
+    box-shadow: none !important;
+    border-radius: 1rem; /* Соответствует rounded-xl */
+}
