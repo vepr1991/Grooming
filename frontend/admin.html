@@ -48,7 +48,6 @@
       }
       .text-fixed-white { color: #ffffff !important; }
 
-      /* Отступ для Safe Area (iPhone челка) */
       .safe-top-padding {
           top: max(20px, env(safe-area-inset-top) + 20px);
       }
@@ -173,21 +172,16 @@
            <div id="add-service-form" class="hidden bg-surface-dark/60 border border-border-dark p-4 rounded-xl flex flex-col gap-3 transition-all">
                <input type="text" id="new-srv-name" placeholder="Название услуги" class="bg-background-dark border border-border-dark rounded-lg p-3 text-white outline-none focus:ring-1 focus:ring-primary focus:border-primary text-sm font-medium">
                <textarea id="new-srv-desc" rows="2" placeholder="Краткое описание" class="bg-background-dark border border-border-dark rounded-lg p-3 text-white outline-none focus:ring-1 focus:ring-primary focus:border-primary text-sm font-medium resize-none"></textarea>
-
                <div class="space-y-1">
                    <label class="text-xs font-bold text-text-secondary ml-1 uppercase">Категория</label>
                    <div class="flex bg-background-dark rounded-lg p-1 border border-border-dark">
                        <label class="flex-1 cursor-pointer">
                            <input type="radio" name="srv-cat" value="dog" class="peer hidden" checked>
-                           <div class="text-center py-2 text-sm font-bold text-text-secondary peer-checked:bg-surface-dark peer-checked:text-primary peer-checked:shadow-sm rounded transition-all">
-                               🐶 Собаки
-                           </div>
+                           <div class="text-center py-2 text-sm font-bold text-text-secondary peer-checked:bg-surface-dark peer-checked:text-primary peer-checked:shadow-sm rounded transition-all">🐶 Собаки</div>
                        </label>
                        <label class="flex-1 cursor-pointer">
                            <input type="radio" name="srv-cat" value="cat" class="peer hidden">
-                           <div class="text-center py-2 text-sm font-bold text-text-secondary peer-checked:bg-surface-dark peer-checked:text-primary peer-checked:shadow-sm rounded transition-all">
-                               🐱 Кошки
-                           </div>
+                           <div class="text-center py-2 text-sm font-bold text-text-secondary peer-checked:bg-surface-dark peer-checked:text-primary peer-checked:shadow-sm rounded transition-all">🐱 Кошки</div>
                        </label>
                    </div>
                </div>
@@ -232,9 +226,7 @@
 
         <div id="tab-appointments" class="tab-content pb-24">
             <div id="calendar-container" class="sticky top-0 z-30 bg-background-dark border-b border-border-dark shadow-xl shadow-black/5"></div>
-
             <div id="appointment-tabs" class="px-4 mt-4 overflow-x-auto no-scrollbar flex gap-2 border-b border-border-dark/50 bg-background-dark/50 backdrop-blur-sm"></div>
-
             <div class="px-5 mt-5 mb-2 flex justify-between items-end">
                 <div>
                     <h1 class="text-2xl font-black text-white tracking-tight">Записи</h1>
@@ -245,92 +237,32 @@
                     <p id="tab-count" class="text-primary text-xl font-black leading-none">0</p>
                 </div>
             </div>
-
             <div id="appointments-list" class="flex flex-col gap-3 p-4 pt-2"></div>
         </div>
 
         <div id="tab-analytics" class="tab-content pb-24">
             <div id="analytics-loader" class="px-4 py-4 flex flex-col gap-5 animate-pulse">
-                <div class="flex justify-between items-center">
-                    <div class="h-7 w-40 bg-surface-dark rounded-lg"></div>
-                    <div class="h-5 w-20 bg-surface-dark rounded-md"></div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="h-[100px] bg-surface-dark rounded-2xl border border-border-dark/50"></div>
-                    <div class="h-[100px] bg-surface-dark rounded-2xl border border-border-dark/50"></div>
-                </div>
+                <div class="flex justify-between items-center"><div class="h-7 w-40 bg-surface-dark rounded-lg"></div><div class="h-5 w-20 bg-surface-dark rounded-md"></div></div>
+                <div class="grid grid-cols-2 gap-3"><div class="h-[100px] bg-surface-dark rounded-2xl border border-border-dark/50"></div><div class="h-[100px] bg-surface-dark rounded-2xl border border-border-dark/50"></div></div>
                 <div class="h-48 bg-surface-dark rounded-2xl border border-border-dark/50"></div>
                 <div class="h-48 bg-surface-dark rounded-2xl border border-border-dark/50"></div>
             </div>
-
             <div id="analytics-lock" class="hidden flex flex-col items-center justify-center h-[60vh] text-center px-6 space-y-4 animate-in fade-in duration-300">
-                <div class="w-20 h-20 bg-surface-dark rounded-full flex items-center justify-center border border-border-dark mb-2">
-                    <span class="material-symbols-outlined text-4xl text-text-secondary">lock</span>
-                </div>
+                <div class="w-20 h-20 bg-surface-dark rounded-full flex items-center justify-center border border-border-dark mb-2"><span class="material-symbols-outlined text-4xl text-text-secondary">lock</span></div>
                 <h3 class="text-xl font-bold text-white">Доступно в Pro</h3>
                 <p class="text-text-secondary text-sm">Аналитика выручки, популярные услуги и статистика записей доступны в Pro-версии.</p>
                 <button onclick="Telegram.WebApp.showAlert('Свяжитесь с поддержкой для обновления')" class="w-full bg-primary text-fixed-white font-bold py-3 rounded-xl mt-4 shadow-lg shadow-primary/20 active:scale-95 transition-all">Узнать подробнее</button>
             </div>
-
             <div id="analytics-content" class="px-4 py-4 flex flex-col gap-5 hidden animate-in slide-in-from-right duration-300">
-                <div class="flex items-center justify-between">
-                    <h3 class="text-xl font-bold tracking-tight text-white">Аналитика салона</h3>
-                    <span class="text-[10px] font-bold text-text-secondary bg-surface-dark px-2 py-1 rounded-md border border-border-dark uppercase tracking-wider">30 дней</span>
-                </div>
-
+                <div class="flex items-center justify-between"><h3 class="text-xl font-bold tracking-tight text-white">Аналитика салона</h3><span class="text-[10px] font-bold text-text-secondary bg-surface-dark px-2 py-1 rounded-md border border-border-dark uppercase tracking-wider">30 дней</span></div>
                 <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-surface-dark border border-border-dark p-4 rounded-2xl flex flex-col justify-between h-[100px]">
-                        <div>
-                            <p class="text-text-secondary text-[10px] font-bold uppercase tracking-wider mb-1">Выручка</p>
-                            <p id="an-revenue" class="text-2xl font-black text-white">0 ₸</p>
-                        </div>
-                        <div class="flex items-center text-[10px] text-success font-bold gap-1">
-                            <span class="material-symbols-outlined text-[14px]">trending_up</span>
-                            <span>Pro Активен</span>
-                        </div>
-                    </div>
-                    <div class="bg-surface-dark border border-border-dark p-4 rounded-2xl flex flex-col justify-between h-[100px]">
-                        <div>
-                            <p class="text-text-secondary text-[10px] font-bold uppercase tracking-wider mb-1">Средний чек</p>
-                            <p id="an-avg" class="text-2xl font-black text-primary">0 ₸</p>
-                        </div>
-                         <p class="text-[10px] text-text-secondary font-medium opacity-60">по завершенным</p>
-                    </div>
+                    <div class="bg-surface-dark border border-border-dark p-4 rounded-2xl flex flex-col justify-between h-[100px]"><div><p class="text-text-secondary text-[10px] font-bold uppercase tracking-wider mb-1">Выручка</p><p id="an-revenue" class="text-2xl font-black text-white">0 ₸</p></div><div class="flex items-center text-[10px] text-success font-bold gap-1"><span class="material-symbols-outlined text-[14px]">trending_up</span><span>Pro Активен</span></div></div>
+                    <div class="bg-surface-dark border border-border-dark p-4 rounded-2xl flex flex-col justify-between h-[100px]"><div><p class="text-text-secondary text-[10px] font-bold uppercase tracking-wider mb-1">Средний чек</p><p id="an-avg" class="text-2xl font-black text-primary">0 ₸</p></div><p class="text-[10px] text-text-secondary font-medium opacity-60">по завершенным</p></div>
                 </div>
-
-                <div class="bg-surface-dark border border-border-dark p-5 rounded-2xl">
-                    <h4 class="font-bold text-sm text-white mb-4 flex items-center gap-2">
-                        <span class="material-symbols-outlined text-primary text-lg">star</span> Популярные услуги
-                    </h4>
-                    <div id="an-top-services" class="flex flex-col gap-4"></div>
-                </div>
-
-                <div class="bg-surface-dark border border-border-dark p-5 rounded-2xl">
-                     <h4 class="font-bold text-sm text-white mb-6">Динамика записей <span class="text-text-secondary font-normal text-xs ml-1">за 7 дней</span></h4>
-                     <div class="h-40 w-full flex items-end justify-between gap-2" id="an-chart-bars"></div>
-                     <div class="flex justify-between mt-2 px-1" id="an-chart-labels"></div>
-                </div>
-
-                <div class="bg-surface-dark border border-border-dark p-5 rounded-2xl">
-                    <h4 class="font-bold text-sm text-white mb-6">Статусы</h4>
-                    <div class="flex items-center gap-6">
-                        <div class="relative w-32 h-32 shrink-0">
-                            <div id="an-pie" class="w-full h-full rounded-full" style="background: conic-gradient(var(--c-bg) 0% 100%);"></div>
-                            <div class="absolute inset-4 bg-surface-dark rounded-full flex items-center justify-center">
-                                <span id="an-total-count" class="text-xl font-black text-white">0</span>
-                            </div>
-                        </div>
-                        <div class="flex flex-col gap-3 w-full" id="an-pie-legend"></div>
-                    </div>
-                </div>
-
-                <div class="bg-primary/10 border border-primary/20 p-4 rounded-2xl flex items-start gap-3 mb-4">
-                     <span class="material-symbols-outlined text-primary">lightbulb</span>
-                     <div>
-                        <p class="text-sm font-bold text-white">Совет</p>
-                        <p id="an-advice" class="text-xs text-text-secondary mt-1 leading-relaxed">Загрузка...</p>
-                     </div>
-                </div>
+                <div class="bg-surface-dark border border-border-dark p-5 rounded-2xl"><h4 class="font-bold text-sm text-white mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-primary text-lg">star</span> Популярные услуги</h4><div id="an-top-services" class="flex flex-col gap-4"></div></div>
+                <div class="bg-surface-dark border border-border-dark p-5 rounded-2xl"><h4 class="font-bold text-sm text-white mb-6">Динамика записей <span class="text-text-secondary font-normal text-xs ml-1">за 7 дней</span></h4><div class="h-40 w-full flex items-end justify-between gap-2" id="an-chart-bars"></div><div class="flex justify-between mt-2 px-1" id="an-chart-labels"></div></div>
+                <div class="bg-surface-dark border border-border-dark p-5 rounded-2xl"><h4 class="font-bold text-sm text-white mb-6">Статусы</h4><div class="flex items-center gap-6"><div class="relative w-32 h-32 shrink-0"><div id="an-pie" class="w-full h-full rounded-full" style="background: conic-gradient(var(--c-bg) 0% 100%);"></div><div class="absolute inset-4 bg-surface-dark rounded-full flex items-center justify-center"><span id="an-total-count" class="text-xl font-black text-white">0</span></div></div><div class="flex flex-col gap-3 w-full" id="an-pie-legend"></div></div></div>
+                <div class="bg-primary/10 border border-primary/20 p-4 rounded-2xl flex items-start gap-3 mb-4"><span class="material-symbols-outlined text-primary">lightbulb</span><div><p class="text-sm font-bold text-white">Совет</p><p id="an-advice" class="text-xs text-text-secondary mt-1 leading-relaxed">Загрузка...</p></div></div>
             </div>
         </div>
       </main>
@@ -340,165 +272,218 @@
         <span class="material-symbols-outlined text-primary">info</span>
         <span id="toast-msg" class="font-bold text-sm"></span>
     </div>
-
     <div id="custom-confirm" class="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center hidden opacity-0 transition-opacity duration-200">
         <div class="bg-surface-dark border border-border-dark rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl transform scale-95 transition-transform duration-200" id="confirm-box">
             <h3 class="text-xl font-bold text-white mb-2">Подтверждение</h3>
             <p id="confirm-text" class="text-text-secondary text-sm mb-6">Вы уверены?</p>
-            <div class="flex gap-3">
-                <button id="confirm-btn-cancel" class="flex-1 py-3 rounded-xl bg-surface-dark border border-border-dark text-white font-bold hover:bg-white/5 active:scale-95 transition-all">Нет</button>
-                <button id="confirm-btn-ok" class="flex-1 py-3 rounded-xl bg-primary text-fixed-white font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 active:scale-95 transition-all">Да</button>
-            </div>
+            <div class="flex gap-3"><button id="confirm-btn-cancel" class="flex-1 py-3 rounded-xl bg-surface-dark border border-border-dark text-white font-bold hover:bg-white/5 active:scale-95 transition-all">Нет</button><button id="confirm-btn-ok" class="flex-1 py-3 rounded-xl bg-primary text-fixed-white font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 active:scale-95 transition-all">Да</button></div>
         </div>
     </div>
-
     <div id="approval-screen" class="fixed inset-0 z-[100] bg-background-dark flex flex-col items-center justify-center p-6 hidden text-center animate-in fade-in duration-300">
-        <div class="w-24 h-24 bg-surface-dark rounded-full flex items-center justify-center mb-6 border border-border-dark shadow-xl">
-            <span class="material-symbols-outlined text-5xl text-primary animate-pulse">hourglass_top</span>
-        </div>
+        <div class="w-24 h-24 bg-surface-dark rounded-full flex items-center justify-center mb-6 border border-border-dark shadow-xl"><span class="material-symbols-outlined text-5xl text-primary animate-pulse">hourglass_top</span></div>
         <h2 class="text-2xl font-bold text-white mb-3">Заявка на проверке</h2>
-        <p class="text-text-secondary text-base mb-8 max-w-xs mx-auto leading-relaxed">
-            Ваш профиль создан! Администратор проверит данные и откроет доступ к управлению салоном.
-        </p>
-        <button id="btn-check-status" class="w-full max-w-xs bg-surface-dark border border-border-dark text-white font-bold py-4 rounded-xl active:scale-[0.98] transition-all hover:bg-surface-dark/80">
-            Проверить статус
-        </button>
+        <p class="text-text-secondary text-base mb-8 max-w-xs mx-auto leading-relaxed">Ваш профиль создан! Администратор проверит данные и откроет доступ к управлению салоном.</p>
+        <button id="btn-check-status" class="w-full max-w-xs bg-surface-dark border border-border-dark text-white font-bold py-4 rounded-xl active:scale-[0.98] transition-all hover:bg-surface-dark/80">Проверить статус</button>
     </div>
 
     <script type="module" src="./src/pages/admin.ts"></script>
 
-    <div id="gallery-modal" class="fixed inset-0 z-[9999] bg-black hidden flex items-center justify-center animate-in fade-in duration-200 select-none opacity-0 transition-opacity" aria-hidden="true">
+    <div id="photo-viewer" class="fixed inset-0 z-[99999] hidden">
+      <div class="absolute inset-0 bg-black/95 backdrop-blur-sm"></div>
 
-<button onclick="closeGallery()"
-  class="fixed safe-top-padding right-6 z-[99999] p-2 bg-white text-black rounded-full shadow-2xl active:scale-90 flex items-center justify-center transition-transform hover:scale-110 cursor-pointer">
-    <span class="material-symbols-outlined text-[28px] font-black">close</span>
-</button>
+      <button id="pv-close"
+        class="fixed top-6 right-6 z-[100002] p-2 bg-white text-black rounded-full shadow-2xl active:scale-90 transition-transform hover:scale-110">
+        <span class="material-symbols-outlined text-[28px] font-black">close</span>
+      </button>
 
+      <div id="pv-counter"
+        class="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100002] text-white text-sm font-bold bg-neutral-800/80 px-4 py-2 rounded-full border border-white/10 backdrop-blur-md">
+        1 / 1
+      </div>
 
-        <div class="absolute inset-x-4 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none z-[10000]">
-            <button id="gallery-prev" onclick="galleryPrev()" class="p-2 bg-white text-black rounded-full shadow-2xl transition-all pointer-events-auto active:scale-90 flex items-center justify-center hover:scale-110 cursor-pointer opacity-90 hover:opacity-100">
-                <span class="material-symbols-outlined text-[24px]">chevron_left</span>
-            </button>
+      <button id="pv-prev"
+        class="fixed left-4 top-1/2 -translate-y-1/2 z-[100002] p-2 bg-white text-black rounded-full shadow-2xl active:scale-90 transition-transform hover:scale-110">
+        <span class="material-symbols-outlined text-[28px] font-black">chevron_left</span>
+      </button>
 
-            <button id="gallery-next" onclick="galleryNext()" class="p-2 bg-white text-black rounded-full shadow-2xl transition-all pointer-events-auto active:scale-90 flex items-center justify-center hover:scale-110 cursor-pointer opacity-90 hover:opacity-100">
-                <span class="material-symbols-outlined text-[24px]">chevron_right</span>
-            </button>
-        </div>
+      <button id="pv-next"
+        class="fixed right-4 top-1/2 -translate-y-1/2 z-[100002] p-2 bg-white text-black rounded-full shadow-2xl active:scale-90 transition-transform hover:scale-110">
+        <span class="material-symbols-outlined text-[28px] font-black">chevron_right</span>
+      </button>
 
-        <div id="gallery-loader" class="absolute inset-0 flex items-center justify-center z-[9998] hidden">
-            <div class="w-10 h-10 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
-        </div>
+      <div id="pv-loader" class="absolute inset-0 flex items-center justify-center z-[100001] hidden">
+        <div class="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+      </div>
 
-        <div class="relative w-full h-full flex items-center justify-center p-4">
-            <img
-                id="gallery-img"
-                src=""
-                alt="Gallery Image"
-                class="max-w-full max-h-full object-contain transition-opacity duration-200 opacity-0 select-none"
-            >
-        </div>
-
-        <div id="gallery-counter" class="absolute bottom-10 left-1/2 -translate-x-1/2 text-white text-sm font-bold bg-neutral-800/80 px-4 py-1.5 rounded-full z-[10000] border border-white/10 backdrop-blur-md">
-            1 / 1
-        </div>
+      <div id="pv-stage"
+        class="absolute inset-0 flex items-center justify-center z-[100000] select-none">
+        <img id="pv-img"
+          class="max-w-full max-h-full object-contain opacity-0 transition-opacity duration-200"
+          draggable="false"
+          alt="Photo">
+      </div>
     </div>
 
     <script>
-        // --- GALLERY LOGIC ---
-
-        const galleryState = {
-            images: [],
-            currentIndex: 0,
-            isOpen: false
+      const PhotoViewer = (() => {
+        const state = {
+          photos: [],
+          index: 0,
+          opened: false,
+          startX: 0,
+          startY: 0,
+          moved: false,
         };
 
-        const elModal = document.getElementById('gallery-modal');
-        const elImg = document.getElementById('gallery-img');
-        const elCounter = document.getElementById('gallery-counter');
-        const elLoader = document.getElementById('gallery-loader');
+        const root = document.getElementById("photo-viewer");
+        const img = document.getElementById("pv-img");
+        const counter = document.getElementById("pv-counter");
+        const loader = document.getElementById("pv-loader");
 
-        window.openGallery = (photos, initialIndex = 0) => {
-            galleryState.images = Array.isArray(photos) ? photos : [photos];
-            galleryState.currentIndex = initialIndex;
-            galleryState.isOpen = true;
+        const btnClose = document.getElementById("pv-close");
+        const btnPrev = document.getElementById("pv-prev");
+        const btnNext = document.getElementById("pv-next");
 
-            elModal.classList.remove('hidden');
-            // Force reflow
-            void elModal.offsetWidth;
-            elModal.classList.remove('opacity-0');
+        function open(photos, initialIndex = 0) {
+          state.photos = Array.isArray(photos) ? photos : [photos];
+          state.index = Math.max(0, Math.min(initialIndex, state.photos.length - 1));
+          state.opened = true;
 
-            updateGalleryUI();
-            document.addEventListener('keydown', handleGalleryKeydown);
-        };
+          root.classList.remove("hidden");
+          document.body.style.overflow = "hidden"; // блокируем скролл
 
-        window.closeGallery = () => {
-            galleryState.isOpen = false;
-            elModal.classList.add('opacity-0');
+          render();
+          preloadAround();
 
-            setTimeout(() => {
-                elModal.classList.add('hidden');
-                elImg.src = '';
-                galleryState.images = [];
-            }, 200);
-
-            document.removeEventListener('keydown', handleGalleryKeydown);
-        };
-
-        window.galleryNext = () => {
-            const { images, currentIndex } = galleryState;
-            galleryState.currentIndex = (currentIndex === images.length - 1) ? 0 : currentIndex + 1;
-            updateGalleryUI();
-        };
-
-        window.galleryPrev = () => {
-            const { images, currentIndex } = galleryState;
-            galleryState.currentIndex = (currentIndex === 0) ? images.length - 1 : currentIndex - 1;
-            updateGalleryUI();
-        };
-
-        function handleGalleryKeydown(e) {
-            if (!galleryState.isOpen) return;
-            if (e.key === 'Escape') closeGallery();
-            if (e.key === 'ArrowLeft') galleryPrev();
-            if (e.key === 'ArrowRight') galleryNext();
+          document.addEventListener("keydown", onKeydown);
         }
 
-        function updateGalleryUI() {
-            const { images, currentIndex } = galleryState;
+        function close() {
+          state.opened = false;
+          root.classList.add("hidden");
+          img.src = "";
+          img.classList.add("opacity-0");
 
-            // Show loader immediately
-            elLoader.classList.remove('hidden');
-            elImg.classList.add('opacity-0');
+          document.body.style.overflow = "";
 
-            const tempImg = new Image();
-            tempImg.src = images[currentIndex];
-
-            tempImg.onload = () => {
-                elImg.src = images[currentIndex];
-                elCounter.textContent = `${currentIndex + 1} / ${images.length}`;
-
-                // Show/Hide buttons if single image
-                const prevBtn = document.getElementById('gallery-prev');
-                const nextBtn = document.getElementById('gallery-next');
-
-                if (images.length <= 1) {
-                    prevBtn.classList.add('hidden');
-                    nextBtn.classList.add('hidden');
-                } else {
-                    prevBtn.classList.remove('hidden');
-                    nextBtn.classList.remove('hidden');
-                }
-
-                // Hide loader and show image
-                elLoader.classList.add('hidden');
-                elImg.classList.remove('opacity-0');
-            };
+          document.removeEventListener("keydown", onKeydown);
         }
 
-        // Close only if clicking BACKGROUND, not buttons/image
-        elModal.onclick = (e) => {
-            if (e.target === elModal) closeGallery();
-        };
+        function next() {
+          if (!state.photos.length) return;
+          state.index = (state.index + 1) % state.photos.length;
+          render();
+          preloadAround();
+        }
+
+        function prev() {
+          if (!state.photos.length) return;
+          state.index = (state.index - 1 + state.photos.length) % state.photos.length;
+          render();
+          preloadAround();
+        }
+
+        function render() {
+          const total = state.photos.length;
+          const current = state.index;
+
+          if (total <= 1) {
+            btnPrev.classList.add("hidden");
+            btnNext.classList.add("hidden");
+          } else {
+            btnPrev.classList.remove("hidden");
+            btnNext.classList.remove("hidden");
+          }
+
+          counter.textContent = `${current + 1} / ${total}`;
+
+          loader.classList.remove("hidden");
+          img.classList.add("opacity-0");
+
+          const url = state.photos[current];
+
+          const temp = new Image();
+          temp.src = url;
+
+          temp.onload = () => {
+            img.src = url;
+            loader.classList.add("hidden");
+            img.classList.remove("opacity-0");
+          };
+
+          temp.onerror = () => {
+            loader.classList.add("hidden");
+          };
+        }
+
+        function preloadAround() {
+          const total = state.photos.length;
+          if (total <= 1) return;
+
+          const nextIndex = (state.index + 1) % total;
+          const prevIndex = (state.index - 1 + total) % total;
+
+          [state.photos[nextIndex], state.photos[prevIndex]].forEach(url => {
+            const pre = new Image();
+            pre.src = url;
+          });
+        }
+
+        function onKeydown(e) {
+          if (!state.opened) return;
+
+          if (e.key === "Escape") close();
+          if (e.key === "ArrowRight") next();
+          if (e.key === "ArrowLeft") prev();
+        }
+
+        // Закрытие по клику на фон
+        root.addEventListener("click", (e) => {
+          if (e.target === root || e.target === root.firstElementChild) {
+            close();
+          }
+        });
+
+        // Кнопки
+        btnClose.addEventListener("click", close);
+        btnPrev.addEventListener("click", prev);
+        btnNext.addEventListener("click", next);
+
+        // Swipe для мобилок
+        root.addEventListener("touchstart", (e) => {
+          if (!state.opened) return;
+          const t = e.touches[0];
+          state.startX = t.clientX;
+          state.startY = t.clientY;
+          state.moved = false;
+        }, { passive: true });
+
+        root.addEventListener("touchmove", (e) => {
+          if (!state.opened) return;
+          state.moved = true;
+        }, { passive: true });
+
+        root.addEventListener("touchend", (e) => {
+          if (!state.opened) return;
+          if (!state.moved) return;
+
+          const t = e.changedTouches[0];
+          const dx = t.clientX - state.startX;
+          const dy = t.clientY - state.startY;
+
+          // игнорируем вертикальные свайпы (чтобы не закрывалось случайно)
+          if (Math.abs(dy) > Math.abs(dx)) return;
+
+          if (dx < -50) next();
+          if (dx > 50) prev();
+        });
+
+        return { open, close, next, prev };
+      })();
+
+      // Экспортируем глобально, чтобы дергать из admin.ts
+      window.openGallery = PhotoViewer.open;
+      window.closeGallery = PhotoViewer.close;
     </script>
   </body>
 </html>
