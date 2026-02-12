@@ -48,9 +48,8 @@
       }
       .text-fixed-white { color: #ffffff !important; }
 
-      /* Поддержка Safe Area для iPhone */
       .safe-top-padding {
-          top: max(24px, env(safe-area-inset-top) + 24px);
+          top: max(20px, env(safe-area-inset-top) + 20px);
       }
     </style>
   </head>
@@ -367,13 +366,23 @@
 
     <script type="module" src="./src/pages/admin.ts"></script>
 
-    <div id="gallery-modal" class="fixed inset-0 z-[999] bg-black/95 hidden flex items-center justify-center animate-in fade-in duration-300 select-none opacity-0 transition-opacity touch-none" aria-hidden="true">
+    <div id="gallery-modal" class="fixed inset-0 z-[9999] bg-black/95 hidden flex items-center justify-center animate-in fade-in duration-300 select-none opacity-0 transition-opacity" aria-hidden="true">
 
-        <button onclick="closeGallery()" class="absolute safe-top-padding right-6 z-[9999] p-3 text-white bg-black/60 hover:bg-black/80 rounded-full backdrop-blur-md transition-all shadow-lg active:scale-90 flex items-center justify-center">
+        <button onclick="closeGallery()" class="absolute safe-top-padding right-6 z-[10000] p-2 bg-black/50 hover:bg-black/80 text-white rounded-full backdrop-blur-md transition-all shadow-lg active:scale-90 flex items-center justify-center border border-white/10">
             <span class="material-symbols-outlined text-[28px] font-bold">close</span>
         </button>
 
-        <div id="gallery-loader" class="absolute inset-0 flex items-center justify-center z-[998] hidden">
+        <div class="absolute inset-x-4 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none z-[10000]">
+            <button id="gallery-prev" onclick="galleryPrev()" class="p-2 bg-black/50 hover:bg-black/80 text-white rounded-full backdrop-blur-md transition-all pointer-events-auto shadow-lg active:scale-90 flex items-center justify-center border border-white/10">
+                <span class="material-symbols-outlined text-[24px]">chevron_left</span>
+            </button>
+
+            <button id="gallery-next" onclick="galleryNext()" class="p-2 bg-black/50 hover:bg-black/80 text-white rounded-full backdrop-blur-md transition-all pointer-events-auto shadow-lg active:scale-90 flex items-center justify-center border border-white/10">
+                <span class="material-symbols-outlined text-[24px]">chevron_right</span>
+            </button>
+        </div>
+
+        <div id="gallery-loader" class="absolute inset-0 flex items-center justify-center z-[9998] hidden">
             <div class="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
         </div>
 
@@ -382,26 +391,23 @@
                 id="gallery-img"
                 src=""
                 alt="Gallery Image"
-                class="max-w-full max-h-full object-contain shadow-2xl transition-all duration-300 scale-95 opacity-0 select-none pointer-events-none"
+                class="max-w-full max-h-full object-contain shadow-2xl transition-all duration-300 scale-95 opacity-0 select-none"
             >
         </div>
 
-        <div id="gallery-counter" class="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/80 text-sm font-bold bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-md z-[1000] border border-white/10">
+        <div id="gallery-counter" class="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/90 text-sm font-bold bg-black/50 px-3 py-1.5 rounded-full backdrop-blur-md z-[10000] border border-white/10">
             1 / 1
         </div>
     </div>
 
     <script>
-        // --- SWIPE GALLERY LOGIC ---
+        // --- GALLERY LOGIC ---
 
         const galleryState = {
             images: [],
             currentIndex: 0,
             isOpen: false
         };
-
-        let touchStartX = 0;
-        let touchEndX = 0;
 
         const elModal = document.getElementById('gallery-modal');
         const elImg = document.getElementById('gallery-img');
@@ -419,11 +425,7 @@
             });
 
             updateGalleryUI();
-
-            // Add listeners
             document.addEventListener('keydown', handleGalleryKeydown);
-            elModal.addEventListener('touchstart', handleTouchStart, {passive: true});
-            elModal.addEventListener('touchend', handleTouchEnd);
         };
 
         window.closeGallery = () => {
@@ -437,10 +439,7 @@
                 galleryState.images = [];
             }, 300);
 
-            // Remove listeners
             document.removeEventListener('keydown', handleGalleryKeydown);
-            elModal.removeEventListener('touchstart', handleTouchStart);
-            elModal.removeEventListener('touchend', handleTouchEnd);
         };
 
         window.galleryNext = () => {
@@ -455,26 +454,6 @@
             updateGalleryUI();
         };
 
-        // --- Touch Handlers ---
-        function handleTouchStart(e) {
-            touchStartX = e.changedTouches[0].screenX;
-        }
-
-        function handleTouchEnd(e) {
-            touchEndX = e.changedTouches[0].screenX;
-            checkSwipe();
-        }
-
-        function checkSwipe() {
-            // Threshold for swipe (50px)
-            if (touchEndX < touchStartX - 50) {
-                window.galleryNext(); // Swipe Left -> Next
-            }
-            if (touchEndX > touchStartX + 50) {
-                window.galleryPrev(); // Swipe Right -> Prev
-            }
-        }
-
         function handleGalleryKeydown(e) {
             if (!galleryState.isOpen) return;
             if (e.key === 'Escape') closeGallery();
@@ -485,11 +464,9 @@
         function updateGalleryUI() {
             const { images, currentIndex } = galleryState;
 
-            elLoader.classList.remove('hidden'); // Show loader
+            elLoader.classList.remove('hidden');
             elImg.classList.add('opacity-50', 'scale-95');
 
-            // Preload next image logic replaced by instant source swap + loader
-            // This is faster perception
             const tempImg = new Image();
             tempImg.src = images[currentIndex];
 
@@ -497,14 +474,20 @@
                 elImg.src = images[currentIndex];
                 elCounter.textContent = `${currentIndex + 1} / ${images.length}`;
 
-                // Hide loader, show img
+                // Show/Hide buttons if single image
+                const prevBtn = document.getElementById('gallery-prev').parentElement;
+                if (images.length <= 1) {
+                    prevBtn.classList.add('hidden');
+                } else {
+                    prevBtn.classList.remove('hidden');
+                }
+
                 elLoader.classList.add('hidden');
                 elImg.classList.remove('opacity-50', 'scale-95', 'opacity-0');
                 elImg.classList.add('scale-100', 'opacity-100');
             };
         }
 
-        // Close on background click
         elModal.onclick = (e) => {
             if (e.target === elModal) closeGallery();
         };
