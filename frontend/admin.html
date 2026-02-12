@@ -93,6 +93,10 @@
                     <label class="text-sm font-bold text-text-secondary ml-1">Адрес</label>
                     <input type="text" id="reg-address" placeholder="Улица, дом" class="w-full bg-background-dark border border-border-dark rounded-xl p-4 text-white outline-none focus:border-primary transition-colors font-bold">
                 </div>
+                <div class="space-y-2">
+                    <label class="text-sm font-bold text-text-secondary ml-1">Ваш Телефон</label>
+                    <input type="tel" id="reg-phone" placeholder="+7 (7XX) XXX-XX-XX" class="w-full bg-background-dark border border-border-dark rounded-xl p-4 text-white outline-none focus:border-primary transition-colors font-bold">
+                </div>
             </div>
             <button id="btn-finish-reg" class="w-full bg-primary hover:bg-primary/90 text-fixed-white font-bold text-lg py-4 rounded-xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
                 Создать салон <span class="material-symbols-outlined">arrow_forward</span>
@@ -350,7 +354,7 @@
         <p class="text-text-secondary text-base mb-8 max-w-xs mx-auto leading-relaxed">
             Ваш профиль создан! Администратор проверит данные и откроет доступ к управлению салоном.
         </p>
-        <button onclick="location.reload()" class="w-full max-w-xs bg-surface-dark border border-border-dark text-white font-bold py-4 rounded-xl active:scale-[0.98] transition-all hover:bg-surface-dark/80">
+        <button id="btn-check-status" class="w-full max-w-xs bg-surface-dark border border-border-dark text-white font-bold py-4 rounded-xl active:scale-[0.98] transition-all hover:bg-surface-dark/80">
             Проверить статус
         </button>
     </div>

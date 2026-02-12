@@ -13,18 +13,25 @@ export async function loadProfile() {
         const data = await apiFetch<{ user: any, profile: MasterProfile }>('/me');
         const p = data.profile;
 
-        // [NEW] ПРОВЕРКА ОДОБРЕНИЯ
-        // Если регистрация уже пройдена (есть имя салона), но админ не одобрил
+        // [FIX] Логика одобрения
         if (p.salon_name && !p.is_approved) {
             show('approval-screen');
-            hide('onboarding-screen'); // Скрываем онбординг, если был открыт
-            return; // БЛОКИРУЕМ ЗАГРУЗКУ ДАЛЬШЕ
+            hide('onboarding-screen');
+            // Блокируем показ основного интерфейса, пока нет одобрения
+            return;
         } else {
             hide('approval-screen');
         }
 
-        // Если нет имени салона, показываем онбординг (регистрацию)
-        if (!p.salon_name) show('onboarding-screen');
+        // Если нет имени салона - регистрация
+        if (!p.salon_name) {
+            show('onboarding-screen');
+            return; // Тоже выходим, чтобы не грузить данные в поля
+        }
+
+        // Если все ок - скрываем экраны блокировки
+        hide('onboarding-screen');
+        hide('approval-screen');
 
         isPremium = p.is_premium || false;
 
@@ -33,7 +40,6 @@ export async function loadProfile() {
         setVal('phone', p.phone || '');
         setVal('description', p.description || '');
 
-        // Собираем фото. Если массив пуст, но есть аватарка (legacy), используем её.
         currentPhotos = p.photos || [];
         if (currentPhotos.length === 0 && p.avatar_url) {
             currentPhotos.push(p.avatar_url);
@@ -47,7 +53,6 @@ export async function loadProfile() {
 }
 
 function updateCarousel(editMode: boolean) {
-    // Лимиты: 10 для Pro, 3 для Basic
     const limit = isPremium ? 10 : 3;
     const canAdd = currentPhotos.length < limit;
 
@@ -69,12 +74,11 @@ function updateCarousel(editMode: boolean) {
 }
 
 export function initProfileHandlers() {
-    // 1. Загрузка фото
+    // ... (код загрузки фото и togglEdit остается без изменений) ...
     const photoInput = $('photo-input') as HTMLInputElement;
     if (photoInput) {
         photoInput.onchange = async () => {
             if (!photoInput.files?.[0]) return;
-
             showToast('Загрузка...');
             try {
                 const url = await uploadPhoto(photoInput.files[0]);
@@ -84,22 +88,17 @@ export function initProfileHandlers() {
             } catch (e: any) {
                 showToast(e.message || 'Ошибка загрузки', 'error');
             }
-            photoInput.value = ''; // Сброс, чтобы можно было загрузить то же фото
+            photoInput.value = '';
         };
     }
 
-    // 2. Режим редактирования
     const toggleEdit = (enable: boolean) => {
         const inputs = ['salon-name', 'address', 'phone', 'description'];
         inputs.forEach(id => $(id)?.toggleAttribute('readonly', !enable));
-
         toggle('edit-actions', enable);
         toggle('btn-edit-mode', !enable);
-
         updateCarousel(enable);
-
         if (enable) {
-            // Сохраняем состояние для отмены
             originalData = {
                 salon_name: getVal('salon-name'),
                 address: getVal('address'),
@@ -113,17 +112,14 @@ export function initProfileHandlers() {
     $('btn-edit-mode')!.onclick = () => toggleEdit(true);
 
     $('btn-cancel')!.onclick = () => {
-        // Восстанавливаем данные
         if(originalData.salon_name !== undefined) setVal('salon-name', originalData.salon_name);
         if(originalData.address !== undefined) setVal('address', originalData.address);
         if(originalData.phone !== undefined) setVal('phone', originalData.phone);
         if(originalData.description !== undefined) setVal('description', originalData.description);
-
         currentPhotos = originalData.photos || [];
         toggleEdit(false);
     };
 
-    // 3. Сохранение профиля
     $('btn-save-profile')!.onclick = async (e) => {
         const btn = e.target as HTMLButtonElement;
         btn.disabled = true;
@@ -151,37 +147,63 @@ export function initProfileHandlers() {
         }
     };
 
-    // 4. Onboarding (Первичная настройка)
+    // [UPDATED] Регистрация с телефоном
     $('btn-finish-reg')!.onclick = async (e) => {
         const name = getVal('reg-name');
         const addr = getVal('reg-address');
+        const phone = getVal('reg-phone'); // [NEW] Берем телефон
 
         if(!name.trim()) return showToast('Введите название салона', 'error');
+        // Можно добавить проверку телефона, если нужно
 
         const btn = e.target as HTMLButtonElement;
         btn.disabled = true;
         btn.textContent = 'Создаем...';
 
         try {
+            // [NEW] Отправляем телефон тоже
             await apiFetch('/me/profile', {
                 method: 'PATCH',
-                body: JSON.stringify({ salon_name: name, address: addr })
+                body: JSON.stringify({
+                    salon_name: name,
+                    address: addr,
+                    phone: phone
+                })
             });
 
-            // Обновляем UI
+            // Обновляем поля в профиле (визуально)
             setVal('salon-name', name);
             setVal('address', addr);
+            setVal('phone', phone);
 
             hide('onboarding-screen');
             showToast('Заявка отправлена!');
 
-            // Перезагружаем профиль.
-            // Сработает проверка в loadProfile, и пользователь увидит экран "Ждите одобрения"
+            // Перезагружаем профиль, чтобы сработала проверка is_approved
             loadProfile();
         } catch {
             showToast('Ошибка при создании', 'error');
             btn.disabled = false;
             btn.textContent = 'Создать салон ->';
         }
+    }
+
+    // [NEW] Кнопка проверки статуса без перезагрузки
+    const checkBtn = $('btn-check-status');
+    if (checkBtn) {
+        checkBtn.onclick = async () => {
+            const btn = checkBtn as HTMLButtonElement;
+            const originalText = btn.textContent;
+            btn.textContent = 'Проверяю...';
+            btn.disabled = true;
+
+            await loadProfile(); // Просто вызываем загрузку данных
+
+            // Если мы все еще здесь (значит is_approved = false), возвращаем кнопку
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }, 500);
+        };
     }
 }
