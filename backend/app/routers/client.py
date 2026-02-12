@@ -268,7 +268,7 @@ async def send_new_appointment_notification(new_appt: dict):
             f"{photo_info}\n"
             f"{comment_section}"
         )
-        send_telegram_message(new_appt['master_telegram_id'], msg)
+        await send_telegram_message(new_appt['master_telegram_id'], msg)
     except Exception as e:
         print(f"Background notify error: {e}")
 
