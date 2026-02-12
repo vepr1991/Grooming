@@ -37,15 +37,12 @@ function createEl<K extends keyof HTMLElementTagNameMap>(
 
 export async function loadAppointments() {
     const list = $('appointments-list');
-
-    // Скелетон загрузки
     if(list) {
         list.innerHTML = '';
         list.appendChild(createEl('div', 'text-center text-text-secondary py-8', 'Загрузка...'));
     }
 
     try {
-        // Загружаем профиль (для проверки Pro) и записи
         const [me, apps] = await Promise.all([
             apiFetch<any>('/me'),
             apiFetch<Appointment[]>('/me/appointments')
@@ -55,8 +52,8 @@ export async function loadAppointments() {
         appointmentsCache = apps;
 
         renderTabs();
-        renderCalendar(); // [RESTORED] Календарь
-        renderList();     // [RESTORED] Список
+        renderCalendar();
+        renderList();
     } catch {
         if(list) {
             list.innerHTML = '';
@@ -70,7 +67,6 @@ function renderTabs() {
     if (!container) return;
     container.innerHTML = '';
 
-    // Фильтрация табов для Basic (как в старом коде)
     const visibleTabs = isPremium
         ? TABS
         : TABS.filter(t => ['pending', 'confirmed'].includes(t.id));
@@ -106,11 +102,10 @@ function changeMonth(offset: number) {
     renderList();
 }
 
-// [RESTORED] Полностью восстановленный календарь на безопасном DOM
 function renderCalendar() {
     const container = $('calendar-container');
     if (!container) return;
-    container.innerHTML = ''; // Чистим контейнер
+    container.innerHTML = '';
 
     const busyDates = new Set(appointmentsCache
         .filter(a => ['pending', 'confirmed'].includes(a.status))
@@ -118,7 +113,6 @@ function renderCalendar() {
 
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
-
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     let firstDay = new Date(year, month, 1).getDay() - 1;
     if (firstDay === -1) firstDay = 6;
@@ -126,7 +120,6 @@ function renderCalendar() {
     const todayStr = new Date().toDateString();
     const selectedStr = selectedDate.toDateString();
 
-    // 1. Шапка календаря (Месяц + Кнопки)
     const wrapper = createEl('div', 'px-4 pt-4 pb-2');
     const header = createEl('div', 'flex justify-between items-center mb-3 px-2');
     const title = createEl('h2', 'text-lg font-bold text-white capitalize', `${MONTH_NAMES[month]} ${year}`);
@@ -145,21 +138,14 @@ function renderCalendar() {
     header.appendChild(title);
     header.appendChild(navDiv);
 
-    // 2. Дни недели
     const weekGrid = createEl('div', 'grid grid-cols-7 gap-1 text-center mb-2');
     WEEK_DAYS.forEach(d => {
         weekGrid.appendChild(createEl('span', 'text-[10px] font-bold text-text-secondary/60 uppercase tracking-wider', d));
     });
 
-    // 3. Сетка дней
     const daysGrid = createEl('div', 'grid grid-cols-7 gap-1');
+    for (let i = 0; i < firstDay; i++) daysGrid.appendChild(createEl('div', 'h-9'));
 
-    // Пустые клетки до начала месяца
-    for (let i = 0; i < firstDay; i++) {
-        daysGrid.appendChild(createEl('div', 'h-9'));
-    }
-
-    // Дни месяца
     for (let i = 1; i <= daysInMonth; i++) {
         const currentDate = new Date(year, month, i);
         const currentStr = currentDate.toDateString();
@@ -178,12 +164,8 @@ function renderCalendar() {
         else btnClass += "text-text-secondary hover:bg-surface-dark";
 
         const dayBtn = createEl('button', btnClass);
+        dayBtn.appendChild(createEl('span', '', String(i)));
 
-        // Номер дня
-        const numSpan = createEl('span', '', String(i));
-        dayBtn.appendChild(numSpan);
-
-        // Точка, если есть записи
         if (hasRecords) {
             const dotColor = isSelected ? 'bg-white' : 'bg-primary';
             dayBtn.appendChild(createEl('span', `w-1 h-1 rounded-full absolute bottom-1.5 ${dotColor}`));
@@ -194,7 +176,6 @@ function renderCalendar() {
             renderCalendar();
             renderList();
         };
-
         daysGrid.appendChild(dayBtn);
     }
 
@@ -211,7 +192,6 @@ function renderList() {
 
     let filtered: Appointment[] = [];
 
-    // [RESTORED] Логика фильтрации (Календарь для активных, Месяц для архива)
     if (activeTab === 'completed' || activeTab === 'cancelled') {
         const y = viewDate.getFullYear();
         const m = String(viewDate.getMonth() + 1).padStart(2, '0');
@@ -227,7 +207,6 @@ function renderList() {
         filtered.sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
     }
 
-    // Обновляем счетчики в хедере (если есть такие элементы)
     setText('tab-label', TABS.find(t => t.id === activeTab)?.label || '');
     setText('tab-count', filtered.length.toString());
 
@@ -242,7 +221,7 @@ function renderList() {
     filtered.forEach(a => list.appendChild(createCard(a)));
 }
 
-// [RESTORED] Карточка со всеми кнопками и старым дизайном
+// [UPDATED] Карточка с поддержкой мульти-фото и новой галереи
 function createCard(a: Appointment): HTMLElement {
     const configs: any = {
         pending: { label: 'ОЖИДАЕТ', color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-l-orange-500' },
@@ -253,7 +232,6 @@ function createCard(a: Appointment): HTMLElement {
     const c = configs[a.status];
     const dateObj = new Date(a.starts_at);
 
-    // Форматирование времени
     let timeDisplay = '';
     if (activeTab === 'completed' || activeTab === 'cancelled') {
         const day = String(dateObj.getDate()).padStart(2, '0');
@@ -266,60 +244,81 @@ function createCard(a: Appointment): HTMLElement {
 
     const card = createEl('div', `relative bg-surface-dark rounded-2xl p-4 border border-border-dark flex flex-col gap-4 transition-all duration-300 border-l-4 ${c.border} animate-in fade-in slide-in-from-bottom-2`);
 
-    // 1. Хедер карточки (Статус + Время)
+    // Хедер
     const header = createEl('div', 'flex justify-between items-center');
     const timeBox = createEl('div', 'flex items-center gap-1.5');
-
-    // Пульсирующая точка
     const dotClass = a.status === 'pending' ? 'bg-orange-500 animate-pulse' : c.bg.replace('/10','');
     timeBox.appendChild(createEl('span', `w-1.5 h-1.5 rounded-full ${dotClass}`));
     timeBox.appendChild(createEl('span', 'text-white font-bold text-xs', timeDisplay));
-
     const statusBadge = createEl('span', `text-[10px] font-bold px-2 py-0.5 rounded ${c.bg} ${c.color}`, c.label);
-
     header.appendChild(timeBox);
     header.appendChild(statusBadge);
     card.appendChild(header);
 
-    // 2. Основной контент (Иконка + Инфо)
+    // Body
     const body = createEl('div', 'flex gap-4 items-start');
 
-    // Иконка питомца
-    const iconBox = createEl('div', 'w-20 h-20 rounded-2xl bg-background-dark flex-shrink-0 border border-border-dark shadow-inner flex items-center justify-center text-text-secondary/60 text-2xl');
-    const srv = a.services as any;
-    iconBox.innerHTML = (srv?.category === 'cat') ? ICONS.Cat : ICONS.Pet; // SVG безопасно
+    // [UPDATED] Иконка или ФОТО
+    const iconBox = createEl('div', 'w-20 h-20 rounded-2xl bg-background-dark flex-shrink-0 border border-border-dark shadow-inner flex items-center justify-center text-text-secondary/60 text-2xl overflow-hidden cursor-pointer relative group');
+
+    // Безопасный парсинг фото
+    let photos: string[] = [];
+    if (a.pet_photos) {
+        if (Array.isArray(a.pet_photos)) {
+            photos = a.pet_photos;
+        } else if (typeof a.pet_photos === 'string') {
+            try {
+                photos = JSON.parse(a.pet_photos);
+            } catch (e) { photos = []; }
+        }
+    }
+
+    if (photos && photos.length > 0) {
+        // Показываем первое фото как обложку
+        const img = createEl('img', 'w-full h-full object-cover transition-transform duration-500 group-hover:scale-110');
+        img.src = photos[0];
+        iconBox.appendChild(img);
+
+        // Индикатор количества, если фоток больше 1
+        if (photos.length > 1) {
+            const countBadge = createEl('span', 'absolute bottom-1 right-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded backdrop-blur-sm font-bold', `+${photos.length - 1}`);
+            iconBox.appendChild(countBadge);
+        }
+
+        // Клик открывает новую галерею
+        iconBox.onclick = (e) => {
+            e.stopPropagation();
+            (window as any).openGallery(photos, 0); // Вызов новой функции
+        };
+    } else {
+        // Стандартная иконка
+        const srv = a.services as any;
+        iconBox.innerHTML = (srv?.category === 'cat') ? ICONS.Cat : ICONS.Pet;
+    }
 
     // Текстовая инфа
     const infoBox = createEl('div', 'flex-grow min-w-0 space-y-1');
-
-    // Имя питомца
     const petBlock = createEl('div', 'flex flex-col');
     petBlock.appendChild(createEl('span', 'text-[10px] text-text-secondary font-bold uppercase tracking-wider', 'Кличка'));
     petBlock.appendChild(createEl('h3', 'text-lg font-bold truncate text-white leading-tight', a.pet_name));
     infoBox.appendChild(petBlock);
 
-    // Услуга и порода
     const detailsGrid = createEl('div', 'grid grid-cols-2 gap-2 mt-1');
-
     const srvBlock = createEl('div', 'flex flex-col');
     srvBlock.appendChild(createEl('span', 'text-[10px] text-text-secondary font-bold uppercase tracking-wider', 'Услуга'));
     srvBlock.appendChild(createEl('p', 'text-white text-[11px] font-medium truncate', a.services?.name || '---'));
-
     const breedBlock = createEl('div', 'flex flex-col');
     breedBlock.appendChild(createEl('span', 'text-[10px] text-text-secondary font-bold uppercase tracking-wider', 'Порода'));
     breedBlock.appendChild(createEl('p', 'text-white text-[11px] font-medium truncate', a.pet_breed || '---'));
-
     detailsGrid.appendChild(srvBlock);
     detailsGrid.appendChild(breedBlock);
     infoBox.appendChild(detailsGrid);
 
-    // Клиент + Телефон
     const clientRow = createEl('div', 'pt-2 flex items-center gap-2');
     clientRow.appendChild(createEl('span', 'text-[11px] text-text-secondary truncate font-medium', a.client_name));
 
-    // [RESTORED] Кнопка копирования
     const copyBtn = createEl('button', 'btn-copy-phone text-primary text-[11px] font-bold hover:text-primary/80 flex items-center gap-1 bg-transparent border-none p-0 cursor-pointer');
-    copyBtn.innerHTML = ICONS.Phone + ` ${a.client_phone}`; // SVG + текст
+    copyBtn.innerHTML = ICONS.Phone + ` ${a.client_phone}`;
     copyBtn.onclick = (e) => {
         e.stopPropagation();
         navigator.clipboard.writeText(a.client_phone).then(() => showToast('Скопировано'));
@@ -331,7 +330,6 @@ function createCard(a: Appointment): HTMLElement {
     body.appendChild(infoBox);
     card.appendChild(body);
 
-    // 3. Комментарий (если есть)
     if (a.comment) {
         const commentBox = createEl('div', 'bg-background-dark/50 rounded-xl p-3 border border-border-dark/50 mt-1 w-full overflow-hidden');
         commentBox.appendChild(createEl('span', 'text-[10px] text-primary font-bold uppercase tracking-wider block mb-1', 'Комментарий'));
@@ -339,13 +337,9 @@ function createCard(a: Appointment): HTMLElement {
         card.appendChild(commentBox);
     }
 
-    // 4. Кнопки действий
     const actionsArea = createEl('div', 'flex flex-col gap-2 mt-2');
-
-    // Кнопки статусов (Подтвердить/Отменить и т.д.)
     if (a.status === 'pending' || a.status === 'confirmed') {
         const btnBox = createEl('div', 'flex gap-2');
-
         if (a.status === 'pending') {
             btnBox.appendChild(createActionBtn('Отменить', 'bg-background-dark text-text-secondary hover:text-error border border-border-dark', () => updateStatus(a.id, 'cancel')));
             btnBox.appendChild(createActionBtn('Подтвердить', 'bg-primary text-fixed-white hover:brightness-110 shadow-primary/20 flex-[2]', () => updateStatus(a.id, 'confirm')));
@@ -356,17 +350,12 @@ function createCard(a: Appointment): HTMLElement {
         actionsArea.appendChild(btnBox);
     }
 
-    // [RESTORED] Кнопка мессенджера (Telegram / WhatsApp)
     const msgBtn = createEl('button', 'w-full py-2.5 rounded-xl bg-background-dark text-text-secondary font-bold text-xs border border-border-dark flex items-center justify-center gap-2 hover:bg-surface-dark hover:text-white transition-all active:scale-[0.98]');
     const isTg = !!a.client_username;
-
-    // Вставляем иконку безопасно
     const iconSpan = createEl('span', isTg ? 'text-[#29b6f6]' : 'text-success');
     iconSpan.innerHTML = isTg ? ICONS.Telegram : ICONS.WhatsApp;
-
     msgBtn.appendChild(iconSpan);
     msgBtn.appendChild(document.createTextNode(isTg ? ' Telegram' : ' WhatsApp'));
-
     msgBtn.onclick = () => {
         if (isTg) Telegram.WebApp.openTelegramLink(`https://t.me/${a.client_username}`);
         else Telegram.WebApp.openLink(`https://wa.me/${a.client_phone.replace(/\D/g, '')}`);
@@ -390,7 +379,7 @@ function createActionBtn(text: string, cls: string, onClick: () => Promise<void>
 
 async function updateStatus(id: number, action: 'confirm' | 'cancel' | 'complete') {
     if (action !== 'confirm' && !(await showConfirm(action === 'cancel' ? 'Отменить запись?' : 'Завершить услугу?'))) {
-        renderList(); // Сброс состояния кнопок
+        renderList();
         return;
     }
     try {
@@ -404,5 +393,4 @@ async function updateStatus(id: number, action: 'confirm' | 'cancel' | 'complete
 }
 
 export function initAppointmentHandlers() {
-    // Хендлеры можно добавить сюда, если нужно, но основная логика внутри render...
 }

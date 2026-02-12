@@ -2,19 +2,22 @@ import { $, setText, show, hide, getVal } from '../../core/dom';
 import { apiFetch } from '../../core/api';
 import { Telegram } from '../../core/tg';
 import { Service } from '../../types';
-import { showToast } from '../../ui/toast'; // [FIX] Импорт
+import { showToast } from '../../ui/toast';
 
 let selectedService: Service | null = null;
 let selectedDate: string | null = null;
 let selectedSlot: string | null = null;
 let masterId: string = '';
 let masterTimezone = 'Asia/Almaty';
+let isMasterPremium = false;
+
+// Храним массив загруженных фото (Base64 строки)
+let uploadedPhotosBase64: string[] = [];
 
 // Calendar state
 let viewDate = new Date();
 let onBackCallback: (() => void) | null = null;
 
-// Хелпер
 function createEl<K extends keyof HTMLElementTagNameMap>(
     tag: K,
     className?: string,
@@ -36,16 +39,93 @@ function closeBooking() {
 
 (window as any).goBack = closeBooking;
 
-export function setupBooking(mId: string, tz: string) {
+export function setupBooking(mId: string, tz: string, isPremium: boolean = false) {
     masterId = mId;
     masterTimezone = tz || 'Asia/Almaty';
+    isMasterPremium = isPremium;
 
     const prevBtn = $('btn-prev-month');
     const nextBtn = $('btn-next-month');
 
     if (prevBtn) prevBtn.onclick = () => { viewDate.setMonth(viewDate.getMonth() - 1); renderCalendar(); };
     if (nextBtn) nextBtn.onclick = () => { viewDate.setMonth(viewDate.getMonth() + 1); renderCalendar(); };
+
+    // [FIX] Инициализируем загрузчик фото (мульти)
+    initPhotoUploader();
 }
+
+// --- ЛОГИКА МУЛЬТИ-ЗАГРУЗКИ ---
+function initPhotoUploader() {
+    const input = $('inp-pet-photo') as HTMLInputElement;
+    if (!input) return;
+
+    // Сбрасываем старые обработчики (на всякий случай)
+    input.onchange = null;
+
+    input.onchange = async () => {
+        if (!input.files || input.files.length === 0) return;
+
+        // Лимит 5 фото
+        if (uploadedPhotosBase64.length + input.files.length > 5) {
+            showToast('Максимум 5 фото', 'error');
+            return;
+        }
+
+        // Обрабатываем каждый файл
+        for (let i = 0; i < input.files.length; i++) {
+            const file = input.files[i];
+            try {
+                const base64 = await fileToBase64(file);
+                uploadedPhotosBase64.push(base64);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        input.value = ''; // Очищаем, чтобы можно было добавить еще
+        renderPhotoPreviews();
+    };
+}
+
+function renderPhotoPreviews() {
+    const track = $('photo-preview-track');
+    if (!track) return;
+
+    track.innerHTML = '';
+
+    if (uploadedPhotosBase64.length > 0) {
+        track.classList.remove('hidden');
+    } else {
+        track.classList.add('hidden');
+    }
+
+    uploadedPhotosBase64.forEach((b64, index) => {
+        const wrap = createEl('div', 'relative w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border border-border-dark group');
+
+        const img = createEl('img', 'w-full h-full object-cover');
+        img.src = b64;
+
+        // Кнопка удаления
+        const removeBtn = createEl('button', 'absolute top-0 right-0 bg-black/50 text-white w-5 h-5 flex items-center justify-center hover:bg-red-500 transition-colors backdrop-blur-sm');
+        removeBtn.innerHTML = '<span class="material-symbols-rounded text-[10px] font-bold">close</span>';
+
+        removeBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            removePhoto(index);
+        };
+
+        wrap.appendChild(img);
+        wrap.appendChild(removeBtn);
+        track.appendChild(wrap);
+    });
+}
+
+function removePhoto(index: number) {
+    uploadedPhotosBase64.splice(index, 1);
+    renderPhotoPreviews();
+}
+// ------------------------------
 
 export function openBooking(service: Service, onBack: () => void) {
     selectedService = service;
@@ -54,9 +134,27 @@ export function openBooking(service: Service, onBack: () => void) {
     onBackCallback = onBack;
 
     setText('selected-service-name', `${service.name} • ${service.price} ₸`);
+
+    // Заполняем имя если есть
+    const nameInp = $('inp-client-name') as HTMLInputElement;
+    if (!nameInp.value && Telegram.WebApp.initDataUnsafe?.user) {
+        const u = Telegram.WebApp.initDataUnsafe.user;
+        nameInp.value = `${u.first_name} ${u.last_name || ''}`.trim();
+    }
+
+    // Сбрасываем фото при новом открытии
+    uploadedPhotosBase64 = [];
+    renderPhotoPreviews();
+
+    // Скрываем/показываем блок фото в зависимости от премиума
+    const photoContainer = $('photo-upload-container');
+    if (photoContainer) {
+        if (isMasterPremium) photoContainer.classList.remove('hidden');
+        else photoContainer.classList.add('hidden');
+    }
+
     hide('view-home');
     show('view-booking');
-
     hide('slots-container');
     hide('booking-form');
 
@@ -65,10 +163,8 @@ export function openBooking(service: Service, onBack: () => void) {
 
     viewDate = new Date();
     const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const d = String(today.getDate()).padStart(2, '0');
-    selectDate(`${y}-${m}-${d}`);
+    renderCalendar();
+    selectDate(`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`);
 }
 
 function selectDate(dateStr: string) {
@@ -77,7 +173,12 @@ function selectDate(dateStr: string) {
     hide('booking-form');
     Telegram.WebApp.MainButton.hide();
 
-    renderCalendar();
+    const days = document.querySelectorAll('.day-cell');
+    days.forEach(d => {
+        d.classList.remove('selected');
+        renderCalendar();
+    });
+
     loadSlots(dateStr);
 }
 
@@ -88,43 +189,29 @@ function renderCalendar() {
 
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
-
     monthEl.textContent = new Date(year, month).toLocaleString('ru', { month: 'long', year: 'numeric' });
 
     const firstDay = new Date(year, month, 1).getDay() || 7;
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
     gridEl.innerHTML = '';
+    for (let i = 1; i < firstDay; i++) gridEl.appendChild(createEl('div'));
 
-    for (let i = 1; i < firstDay; i++) {
-        gridEl.appendChild(createEl('div'));
-    }
-
-    const today = new Date();
-    today.setHours(0,0,0,0);
+    const today = new Date(); today.setHours(0,0,0,0);
 
     for (let d = 1; d <= daysInMonth; d++) {
         const date = new Date(year, month, d);
+        const isoDate = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
         const isPast = date < today;
-        const isToday = date.getTime() === today.getTime();
-
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const dayStr = String(date.getDate()).padStart(2, '0');
-        const isoDate = `${y}-${m}-${dayStr}`;
-
         const isSelected = selectedDate === isoDate;
 
-        let className = 'day-cell';
-        if (isToday) className += ' today';
-        if (isSelected) className += ' selected';
-        if (isPast) className += ' disabled';
+        let cls = 'day-cell p-2 rounded-lg font-bold text-sm cursor-pointer hover:bg-surface transition-colors text-white';
+        if (date.getTime() === today.getTime()) cls += ' border border-primary text-primary';
+        if (isSelected) cls = 'day-cell p-2 rounded-lg font-bold text-sm bg-primary text-white shadow-lg transform scale-105';
+        if (isPast) cls = 'day-cell p-2 text-text-secondary/20 cursor-not-allowed';
 
-        const cell = createEl('div', className, d.toString());
-
-        if (!isPast) {
-            cell.onclick = () => selectDate(isoDate);
-        }
+        const cell = createEl('div', cls, d.toString());
+        if (!isPast) cell.onclick = () => selectDate(isoDate);
         gridEl.appendChild(cell);
     }
 }
@@ -133,48 +220,42 @@ async function loadSlots(date: string) {
     show('slots-container');
     const grid = $('slots-grid');
     if(!grid) return;
-
-    grid.innerHTML = '';
-
-    if (!selectedService) {
-        grid.appendChild(createEl('div', 'col-span-4 text-center text-error', 'Ошибка: Услуга не выбрана'));
-        return;
-    }
-
-    grid.appendChild(createEl('div', 'col-span-4 text-center text-secondary text-sm py-4', 'Поиск окошек...'));
+    grid.innerHTML = '<div class="col-span-4 text-center text-text-secondary text-sm py-4 animate-pulse">Поиск окошек...</div>';
 
     try {
-        const slots = await apiFetch<string[]>(`/masters/${masterId}/availability?date=${date}&service_id=${selectedService.id}`);
-
+        const slots = await apiFetch<string[]>(`/masters/${masterId}/availability?date=${date}&service_id=${selectedService!.id}`);
         grid.innerHTML = '';
 
         if (slots.length === 0) {
-            grid.appendChild(createEl('div', 'col-span-4 text-center text-secondary/50 text-sm py-2', 'Нет мест'));
+            grid.innerHTML = '<div class="col-span-4 text-center text-text-secondary/50 text-sm py-2">Нет мест</div>';
             return;
         }
 
         slots.forEach((isoTime) => {
             const time = new Date(isoTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: masterTimezone });
-
-            const btn = createEl('button', 'slot-btn', time);
+            const btn = createEl('button', 'py-2 px-1 bg-surface border border-border rounded-xl text-white font-bold text-sm hover:border-primary focus:bg-primary focus:border-primary transition-all', time);
 
             btn.onclick = () => {
-                document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
+                Array.from(grid.children).forEach(child => {
+                    child.className = 'py-2 px-1 bg-surface border border-border rounded-xl text-white font-bold text-sm hover:border-primary transition-all';
+                });
+                btn.className = 'py-2 px-1 bg-primary border-primary rounded-xl text-white font-bold text-sm shadow-lg ring-2 ring-primary/30';
                 selectedSlot = isoTime;
                 showBookingForm();
             };
             grid.appendChild(btn);
         });
-    } catch (e) {
-        grid.innerHTML = '';
-        grid.appendChild(createEl('div', 'col-span-4 text-center text-error text-sm', 'Ошибка загрузки'));
+    } catch {
+        grid.innerHTML = '<div class="col-span-4 text-center text-red-400 text-sm">Ошибка загрузки расписания</div>';
     }
 }
 
 function showBookingForm() {
     show('booking-form');
-    setTimeout(() => $('booking-form')?.scrollIntoView({ behavior: 'smooth' }), 100);
+    setTimeout(() => {
+        const form = document.getElementById('booking-form');
+        if(form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
 
     if (selectedService) {
         Telegram.WebApp.MainButton.setText(`ЗАПИСАТЬСЯ • ${selectedService.price} ₸`);
@@ -183,20 +264,22 @@ function showBookingForm() {
     }
 }
 
+const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+    });
+};
+
 async function submitBooking() {
     const name = getVal('inp-client-name').trim();
     const phone = getVal('inp-phone').trim();
     const agreement = ($('inp-agreement') as HTMLInputElement)?.checked;
 
-    if (!name || phone.length < 10) {
-        showToast('Заполните имя и телефон', 'error');
-        return;
-    }
-
-    if (!agreement) {
-        showToast('Примите условия оферты', 'error');
-        return;
-    }
+    if (!name || phone.length < 10) { showToast('Заполните имя и телефон', 'error'); return; }
+    if (!agreement) { showToast('Примите условия оферты', 'error'); return; }
 
     Telegram.WebApp.MainButton.showProgress();
 
@@ -210,17 +293,18 @@ async function submitBooking() {
             client_username: Telegram.WebApp.initDataUnsafe?.user?.username || null,
             pet_name: getVal('inp-pet-name').trim(),
             pet_breed: getVal('inp-pet-breed').trim() || null,
-            comment: getVal('inp-comment').trim() || null
+            comment: getVal('inp-comment').trim() || null,
+
+            // [FIX] Отправляем массив Base64, если премиум
+            pet_photos_base64: isMasterPremium ? uploadedPhotosBase64 : []
         };
 
         await apiFetch('/appointments', { method: 'POST', body: JSON.stringify(payload) });
 
-        // Успех
-        if (selectedDate && selectedSlot) {
-            const dateObj = new Date(selectedSlot);
-            const timeStr = dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: masterTimezone });
-            const dateStr = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-
+        if (selectedSlot) {
+            const d = new Date(selectedSlot);
+            const timeStr = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: masterTimezone });
+            const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
             setText('success-date', `${dateStr} в ${timeStr}`);
             setText('success-service', selectedService!.name);
         }
@@ -228,17 +312,14 @@ async function submitBooking() {
         hide('view-booking');
         show('view-success');
         Telegram.WebApp.MainButton.hide();
-
     } catch (e: any) {
         Telegram.WebApp.MainButton.hideProgress();
-
-        // [FIX] Обработка конфликта (409)
-        if (e.message && (e.message.includes('409') || e.message.toLowerCase().includes('conflict') || e.message.includes('занято'))) {
-            showToast('Это время только что заняли. Выберите другое.', 'error');
-            // Обновляем слоты, чтобы пользователь увидел, что место пропало
+        if (e.message && e.message.includes('409')) {
+            showToast('Это время уже занято', 'error');
             if (selectedDate) loadSlots(selectedDate);
         } else {
-            showToast('Ошибка при записи. Попробуйте позже.', 'error');
+            console.error(e);
+            showToast('Ошибка при записи', 'error');
         }
     }
 }

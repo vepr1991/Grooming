@@ -1,9 +1,13 @@
 # (c) 2026 Владимир Коваленко. Все права защищены.
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+import base64
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File
 from datetime import datetime, timedelta
 import pytz
+import uuid
 
-from app.auth import validate_telegram_data
+# [FIX] Импортируем get_current_user
+from app.auth import get_current_user
 from app.db import supabase
 from app.utils import send_telegram_message, escape_html
 from app.schemas.appointment import AppointmentCreate
@@ -49,7 +53,6 @@ async def get_master_schedule(master_id: int):
 async def get_master_availability(master_id: int, service_id: int, date: str):
     """
     Оптимизированный поиск слотов.
-    Сложность снижена с O(N*M) до O(N+M) за счет сортировки и линейного прохода.
     """
     # 1. Загружаем таймзону и премиум статус
     master_res = supabase.table("masters") \
@@ -74,12 +77,10 @@ async def get_master_availability(master_id: int, service_id: int, date: str):
     try:
         naive_date = datetime.strptime(date, "%Y-%m-%d")
         target_date_start = master_tz.localize(naive_date)
-        # Конец дня (23:59:59)
         target_date_end = target_date_start + timedelta(days=1) - timedelta(seconds=1)
     except ValueError:
         raise HTTPException(400, "Invalid date format YYYY-MM-DD")
 
-    # Нельзя смотреть прошлое (оптимизация)
     now_in_tz = datetime.now(master_tz)
     if target_date_end < now_in_tz:
         return []
@@ -91,7 +92,7 @@ async def get_master_availability(master_id: int, service_id: int, date: str):
     duration = srv_res.data.get('duration_min', 60)
 
     # 4. Получаем график на этот день недели
-    weekday_iso = target_date_start.isoweekday()  # 1=Mon, 7=Sun
+    weekday_iso = target_date_start.isoweekday()
     wh_res = supabase.table("working_hours") \
         .select("start_time, end_time, slot_minutes") \
         .eq("master_telegram_id", master_id) \
@@ -100,12 +101,11 @@ async def get_master_availability(master_id: int, service_id: int, date: str):
         .execute()
 
     if not wh_res.data:
-        return []  # Мастер не работает в этот день
+        return []
 
     schedule = wh_res.data
     slot_step = 30 if not is_premium else schedule.get('slot_minutes', 30)
 
-    # Парсим время начала и конца работы
     def parse_time_to_dt(time_str, base_date):
         t = datetime.strptime(time_str, "%H:%M:%S").time()
         return base_date.replace(hour=t.hour, minute=t.minute, second=0)
@@ -113,7 +113,6 @@ async def get_master_availability(master_id: int, service_id: int, date: str):
     work_start_dt = parse_time_to_dt(schedule['start_time'], target_date_start)
     work_end_dt = parse_time_to_dt(schedule['end_time'], target_date_start)
 
-    # Корректировка, если смотрим "сегодня" - нельзя записаться в прошлое
     if work_start_dt < now_in_tz:
         minute_remainder = now_in_tz.minute % slot_step
         minutes_to_add = slot_step - minute_remainder
@@ -173,8 +172,8 @@ async def get_master_availability(master_id: int, service_id: int, date: str):
 
 
 @router.get("/my-appointments")
-async def get_client_appointments(user=Depends(validate_telegram_data)):
-    # Выбираем записи текущего пользователя
+# [FIX] Используем get_current_user вместо validate_telegram_data
+async def get_client_appointments(user=Depends(get_current_user)):
     res = supabase.table("appointments") \
         .select("*, services(name, price, duration_min), masters(salon_name, address, phone, avatar_url)") \
         .eq("client_telegram_id", user['id']) \
@@ -184,23 +183,51 @@ async def get_client_appointments(user=Depends(validate_telegram_data)):
     return res.data
 
 
-# --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ФОНОВОГО УВЕДОМЛЕНИЯ ---
+@router.post("/upload-pet-photo")
+# [FIX] Используем get_current_user вместо validate_telegram_data
+async def upload_pet_photo(
+        file: UploadFile = File(...),
+        user=Depends(get_current_user)
+):
+    """Загрузка фото питомца (клиент)"""
+    file_ext = file.filename.split('.')[-1] if '.' in file.filename else "jpg"
+    file_path = f"clients/{user['id']}/{uuid.uuid4()}.{file_ext}"
+
+    file_content = await file.read()
+
+    try:
+        bucket_name = "avatars"
+
+        supabase.storage.from_(bucket_name).upload(
+            file_path,
+            file_content,
+            file_options={"content-type": file.content_type, "upsert": "true"}
+        )
+
+        public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
+        return {"url": public_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
+
+
 async def send_new_appointment_notification(new_appt: dict):
-    """Отправляет уведомление мастеру в фоне, чтобы не тормозить API"""
     try:
         service_name = "Услуга"
         try:
             srv_res = supabase.table("services").select("name").eq("id", new_appt['service_id']).single().execute()
             if srv_res.data:
                 service_name = escape_html(srv_res.data.get('name', 'Услуга'))
-        except: pass
+        except:
+            pass
 
         tz_name = 'Asia/Almaty'
         try:
-            master_res = supabase.table("masters").select("timezone").eq("telegram_id", new_appt['master_telegram_id']).single().execute()
+            master_res = supabase.table("masters").select("timezone").eq("telegram_id", new_appt[
+                'master_telegram_id']).single().execute()
             if master_res.data and master_res.data.get('timezone'):
                 tz_name = master_res.data['timezone']
-        except: pass
+        except:
+            pass
 
         try:
             utc_dt = datetime.fromisoformat(new_appt['starts_at'].replace('Z', '+00:00'))
@@ -210,7 +237,6 @@ async def send_new_appointment_notification(new_appt: dict):
         except:
             date_str = str(new_appt['starts_at'])
 
-        # Безопасная сборка данных (XSS защита)
         safe_client_name = escape_html(new_appt.get('client_name', 'Не указано'))
         safe_username = escape_html(new_appt.get('client_username'))
         safe_phone = escape_html(new_appt.get('client_phone'))
@@ -230,16 +256,21 @@ async def send_new_appointment_notification(new_appt: dict):
         if safe_comment:
             comment_section = f"\n💬 Комментарий: {safe_comment}"
 
+        photo_info = ""
+        if new_appt.get('pet_photos') and len(new_appt['pet_photos']) > 0:
+            photo_info = "\n📷 <b>Прикреплено фото питомца</b>"
+
         msg = (
             f"🆕 <b>Новая запись!</b>\n\n"
             f"{client_line}\n"
             f"📞 Телефон: {safe_phone}\n"
             f"{pet_line}\n"
             f"✂️ Услуга: {service_name}\n"
-            f"🗓 Время: {date_str}\n\n"
+            f"🗓 Время: {date_str}\n"
+            f"{photo_info}\n"
             f"{comment_section}"
         )
-        send_telegram_message(new_appt['master_telegram_id'], msg)
+        await send_telegram_message(new_appt['master_telegram_id'], msg)
     except Exception as e:
         print(f"Background notify error: {e}")
 
@@ -247,17 +278,52 @@ async def send_new_appointment_notification(new_appt: dict):
 @router.post("/appointments")
 async def create_appointment_public(
         app_data: AppointmentCreate,
-        background_tasks: BackgroundTasks,  # [FIX] Инжектируем BackgroundTasks
-        user=Depends(validate_telegram_data)
+        background_tasks: BackgroundTasks,
+        user=Depends(get_current_user)
 ):
-    # 1. Создаем запись в БД (синхронно или асинхронно, главное быстро)
+    saved_urls = []
+
+    # --- ЛОГИКА ОБРАБОТКИ ФОТО (МАССИВ) ---
+    if app_data.pet_photos_base64:
+        bucket_name = "avatars"  # Убедитесь, что бакет существует в Supabase
+
+        for idx, b64_str in enumerate(app_data.pet_photos_base64):
+            try:
+                # 1. Очищаем заголовок base64
+                if "," in b64_str:
+                    _, encoded = b64_str.split(",", 1)
+                else:
+                    encoded = b64_str
+
+                # 2. Декодируем
+                file_content = base64.b64decode(encoded)
+
+                # 3. Генерируем путь
+                file_path = f"appointments/{user['id']}/{uuid.uuid4()}.jpg"
+
+                # 4. Загружаем в Supabase
+                supabase.storage.from_(bucket_name).upload(
+                    path=file_path,
+                    file=file_content,
+                    file_options={"content-type": "image/jpeg", "upsert": "true"}
+                )
+
+                # 5. Получаем ссылку
+                public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
+                saved_urls.append(public_url)
+
+            except Exception as e:
+                print(f"Error processing photo #{idx}: {e}")
+
+    # Сохраняем итоговый список ссылок в модель для БД
+    app_data.pet_photos = saved_urls
+    # -----------------------------
+
     new_appt = await AppointmentService.create(
         data=app_data,
         client_id=user['id'],
         client_username=user.get('username')
     )
 
-    # 2. Ставим отправку уведомления в очередь (не ждем ответа от Telegram)
     background_tasks.add_task(send_new_appointment_notification, new_appt)
-
     return new_appt
