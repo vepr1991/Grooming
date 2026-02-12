@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* Фиксируем цвета для Tailwind v4, чтобы они брали значения из CSS-переменных */
+  /* Привязка цветов Tailwind v4 к вашим переменным */
   --color-primary: var(--c-primary);
   --color-background-dark: var(--c-bg);
   --color-surface-dark: var(--c-surface);
@@ -13,7 +13,6 @@
 }
 
 :root {
-    /* === СВЕТЛАЯ ТЕМА === */
     --c-bg: #f3f4f6;
     --c-surface: #ffffff;
     --c-border: #e5e7eb;
@@ -22,30 +21,40 @@
     --c-primary: #3899fa;
     --c-success: #31b545;
     --c-error: #ff4b4b;
+    --c-text-on-primary: #ffffff;
 }
 
-/* Принудительно включаем темную тему, если есть класс .dark */
 .dark {
     --c-bg: #101a23;
     --c-surface: #182635;
     --c-border: #2f4d6a;
     --c-text-main: #ffffff;
     --c-text-sec: #8eadcc;
+    --c-text-on-primary: #ffffff;
 }
+
+/* Глобальное исправление квадратного фокуса и теней */
+input:focus, textarea:focus, select:focus {
+    outline: none !important;
+    box-shadow: none !important;
+    border-radius: 1rem; /* Соответствует rounded-xl */
+}
+
+/* Фикс для видимости бордеров принудительно (если Tailwind v4 их скрыл) */
+.border { border-width: 1px; }
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     margin: 0;
     padding: 0;
-    /* Используем переменную фона */
     background-color: var(--c-bg);
     color: var(--c-text-main);
     box-sizing: border-box;
-    padding-bottom: 40px; 
-    
-    /* Плавный переход при смене темы */
+    padding-bottom: 40px;
     transition: background-color 0.3s, color 0.3s, border-color 0.3s;
 }
+
+/* ... (Остальные ваши стили .service-card, .day-cell и т.д. из style.css) */
 
 /* Скрываем скроллбар */
 .scrollbar-hide::-webkit-scrollbar { display: none; }
@@ -177,10 +186,3 @@ p { color: var(--c-text-sec); }
     box-shadow: 0 4px 12px rgba(0,0,0,0.15); text-align: center; min-width: 200px; 
 }
 .toast.hidden { opacity: 0; transform: translateX(-50%) translateY(10px); }
-
-/* В конец файла или в блок базовых стилей */
-input:focus, textarea:focus {
-    outline: none !important;
-    box-shadow: none !important;
-    border-radius: 1rem; /* Соответствует rounded-xl */
-}

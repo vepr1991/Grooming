@@ -54,9 +54,7 @@
 <div id="app-loader" class="fixed inset-0 z-[200] bg-background-dark p-6 overflow-hidden">
     <div class="animate-pulse space-y-8 max-w-md mx-auto">
         <div class="h-8 bg-surface-dark rounded-lg w-1/2 mx-auto mt-4"></div>
-
         <div class="w-full aspect-square bg-surface-dark rounded-[32px]"></div>
-
         <div class="space-y-4">
             <div class="h-14 bg-surface-dark rounded-xl w-full"></div>
             <div class="h-14 bg-surface-dark rounded-xl w-full"></div>
@@ -229,9 +227,7 @@
 
         <div id="tab-appointments" class="tab-content pb-24">
             <div id="calendar-container" class="sticky top-0 z-30 bg-background-dark border-b border-border-dark shadow-xl shadow-black/5"></div>
-
             <div id="appointment-tabs" class="px-4 mt-4 overflow-x-auto no-scrollbar flex gap-2 border-b border-border-dark/50 bg-background-dark/50 backdrop-blur-sm"></div>
-
             <div class="px-5 mt-5 mb-2 flex justify-between items-end">
                 <div>
                     <h1 class="text-2xl font-black text-white tracking-tight">Записи</h1>
@@ -242,7 +238,6 @@
                     <p id="tab-count" class="text-primary text-xl font-black leading-none">0</p>
                 </div>
             </div>
-
             <div id="appointments-list" class="flex flex-col gap-3 p-4 pt-2"></div>
         </div>
 
@@ -261,7 +256,6 @@
                     <h3 class="text-xl font-bold tracking-tight text-white">Аналитика салона</h3>
                     <span class="text-[10px] font-bold text-text-secondary bg-surface-dark px-2 py-1 rounded-md border border-border-dark uppercase tracking-wider">30 дней</span>
                 </div>
-
                 <div class="grid grid-cols-2 gap-3">
                     <div class="bg-surface-dark border border-border-dark p-4 rounded-2xl flex flex-col justify-between h-[100px]">
                         <div>
@@ -281,20 +275,17 @@
                          <p class="text-[10px] text-text-secondary font-medium opacity-60">по завершенным</p>
                     </div>
                 </div>
-
                 <div class="bg-surface-dark border border-border-dark p-5 rounded-2xl">
                     <h4 class="font-bold text-sm text-white mb-4 flex items-center gap-2">
                         <span class="material-symbols-outlined text-primary text-lg">star</span> Популярные услуги
                     </h4>
                     <div id="an-top-services" class="flex flex-col gap-4"></div>
                 </div>
-
                 <div class="bg-surface-dark border border-border-dark p-5 rounded-2xl">
                      <h4 class="font-bold text-sm text-white mb-6">Динамика записей <span class="text-text-secondary font-normal text-xs ml-1">за 7 дней</span></h4>
                      <div class="h-40 w-full flex items-end justify-between gap-2" id="an-chart-bars"></div>
                      <div class="flex justify-between mt-2 px-1" id="an-chart-labels"></div>
                 </div>
-
                 <div class="bg-surface-dark border border-border-dark p-5 rounded-2xl">
                     <h4 class="font-bold text-sm text-white mb-6">Статусы</h4>
                     <div class="flex items-center gap-6">
@@ -307,7 +298,6 @@
                         <div class="flex flex-col gap-3 w-full" id="an-pie-legend"></div>
                     </div>
                 </div>
-
                 <div class="bg-primary/10 border border-primary/20 p-4 rounded-2xl flex items-start gap-3 mb-4">
                      <span class="material-symbols-outlined text-primary">lightbulb</span>
                      <div>
@@ -324,7 +314,6 @@
         <span class="material-symbols-outlined text-primary">info</span>
         <span id="toast-msg" class="font-bold text-sm"></span>
     </div>
-
     <div id="custom-confirm" class="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center hidden opacity-0 transition-opacity duration-200">
         <div class="bg-surface-dark border border-border-dark rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl transform scale-95 transition-transform duration-200" id="confirm-box">
             <h3 class="text-xl font-bold text-white mb-2">Подтверждение</h3>
