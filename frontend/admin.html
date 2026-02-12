@@ -362,25 +362,97 @@
 
     <script type="module" src="./src/pages/admin.ts"></script>
 
-    <div id="lightbox" class="fixed inset-0 z-[300] bg-black/95 hidden flex flex-col items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-200" onclick="closeLightbox()">
-        <button class="absolute top-6 right-6 p-4 text-white/70 hover:text-white bg-white/10 rounded-full backdrop-blur-md transition-colors z-20">
-            <span class="material-symbols-outlined text-3xl">close</span>
+    <div id="lightbox" class="fixed inset-0 z-[300] bg-black/95 hidden flex flex-col items-center justify-center backdrop-blur-md animate-in fade-in duration-200 select-none">
+
+        <button onclick="closeLightbox()" class="absolute top-4 right-4 z-50 p-3 bg-black/50 hover:bg-red-600 text-white rounded-full transition-all backdrop-blur-md border border-white/20 active:scale-95">
+            <span class="material-symbols-outlined text-2xl font-bold block">close</span>
         </button>
 
-        <img id="lightbox-img" class="max-w-full max-h-[85vh] rounded-2xl shadow-2xl transition-transform duration-300 scale-95" onclick="event.stopPropagation()">
+        <div id="lb-counter" class="absolute top-6 left-1/2 -translate-x-1/2 text-white/80 font-bold text-sm bg-black/50 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
+            1 / 1
+        </div>
+
+        <div class="relative w-full h-full flex items-center justify-center p-4">
+
+            <button id="lb-prev" onclick="changeSlide(-1)" class="absolute left-2 z-40 p-4 text-white hover:text-primary transition-all disabled:opacity-0 disabled:pointer-events-none">
+                <span class="material-symbols-outlined text-5xl drop-shadow-lg">chevron_left</span>
+            </button>
+
+            <img id="lightbox-img" class="max-w-full max-h-[85vh] rounded-xl shadow-2xl transition-transform duration-300 scale-95 object-contain" src="">
+
+            <button id="lb-next" onclick="changeSlide(1)" class="absolute right-2 z-40 p-4 text-white hover:text-primary transition-all disabled:opacity-0 disabled:pointer-events-none">
+                <span class="material-symbols-outlined text-5xl drop-shadow-lg">chevron_right</span>
+            </button>
+        </div>
     </div>
 
     <script>
-        // Глобальные функции лайтбокса
-        window.openLightbox = (url) => {
+        // ЛОГИКА ГАЛЕРЕИ
+        let currentPhotos = [];
+        let currentIndex = 0;
+
+        window.openLightbox = (photosOrUrl, index = 0) => {
             const lb = document.getElementById('lightbox');
             const img = document.getElementById('lightbox-img');
+
+            // Нормализация данных (строка или массив)
+            if (Array.isArray(photosOrUrl)) {
+                currentPhotos = photosOrUrl;
+            } else {
+                currentPhotos = [photosOrUrl];
+            }
+
+            currentIndex = index;
+            updateLightboxUI();
+
             if (lb && img) {
-                img.src = url;
                 lb.classList.remove('hidden');
                 setTimeout(() => img.classList.remove('scale-95'), 50);
             }
         };
+
+        window.changeSlide = (step) => {
+            const newIndex = currentIndex + step;
+            if (newIndex >= 0 && newIndex < currentPhotos.length) {
+                currentIndex = newIndex;
+                const img = document.getElementById('lightbox-img');
+
+                // Анимация смены
+                img.style.opacity = '0.5';
+                img.style.transform = 'scale(0.95)';
+
+                setTimeout(() => {
+                    updateLightboxUI();
+                    img.style.opacity = '1';
+                    img.style.transform = 'scale(1)';
+                }, 150);
+            }
+        };
+
+        function updateLightboxUI() {
+            const img = document.getElementById('lightbox-img');
+            const counter = document.getElementById('lb-counter');
+            const prevBtn = document.getElementById('lb-prev');
+            const nextBtn = document.getElementById('lb-next');
+
+            if (img) img.src = currentPhotos[currentIndex];
+            if (counter) counter.textContent = `${currentIndex + 1} / ${currentPhotos.length}`;
+
+            // Скрываем стрелки, если некуда листать
+            if (prevBtn) prevBtn.disabled = currentIndex === 0;
+            if (nextBtn) nextBtn.disabled = currentIndex === currentPhotos.length - 1;
+
+            // Скрываем элементы навигации, если фото всего одно
+            if (currentPhotos.length <= 1) {
+                if (prevBtn) prevBtn.style.display = 'none';
+                if (nextBtn) nextBtn.style.display = 'none';
+                if (counter) counter.style.display = 'none';
+            } else {
+                if (prevBtn) prevBtn.style.display = 'block';
+                if (nextBtn) nextBtn.style.display = 'block';
+                if (counter) counter.style.display = 'block';
+            }
+        }
 
         window.closeLightbox = () => {
             const lb = document.getElementById('lightbox');
@@ -390,7 +462,15 @@
                 setTimeout(() => {
                     lb.classList.add('hidden');
                     img.src = '';
+                    currentPhotos = [];
                 }, 200);
+            }
+        };
+
+        // Закрытие по клику на фон
+        document.getElementById('lightbox').onclick = (e) => {
+            if (e.target.id === 'lightbox' || e.target.parentNode.id === 'lightbox') {
+                window.closeLightbox();
             }
         };
     </script>

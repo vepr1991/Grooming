@@ -221,7 +221,7 @@ function renderList() {
     filtered.forEach(a => list.appendChild(createCard(a)));
 }
 
-// [UPDATED] Карточка с поддержкой фото в iconBox
+// [UPDATED] Карточка с поддержкой мульти-фото
 function createCard(a: Appointment): HTMLElement {
     const configs: any = {
         pending: { label: 'ОЖИДАЕТ', color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-l-orange-500' },
@@ -261,30 +261,34 @@ function createCard(a: Appointment): HTMLElement {
     // [UPDATED] Иконка или ФОТО
     const iconBox = createEl('div', 'w-20 h-20 rounded-2xl bg-background-dark flex-shrink-0 border border-border-dark shadow-inner flex items-center justify-center text-text-secondary/60 text-2xl overflow-hidden cursor-pointer relative group');
 
-    // Если есть фото (поддержка и массива, и старого формата если вдруг)
-    // Внимание: тип данных в a.pet_photos может быть string (JSON) или массив, в зависимости от того как парсит клиент API
+    // Безопасный парсинг фото
     let photos: string[] = [];
     if (a.pet_photos) {
-        photos = Array.isArray(a.pet_photos) ? a.pet_photos : JSON.parse(a.pet_photos as unknown as string);
+        if (Array.isArray(a.pet_photos)) {
+            photos = a.pet_photos;
+        } else if (typeof a.pet_photos === 'string') {
+            try {
+                photos = JSON.parse(a.pet_photos);
+            } catch (e) { photos = []; }
+        }
     }
 
     if (photos && photos.length > 0) {
-        // Показываем первое фото
+        // Показываем первое фото как обложку
         const img = createEl('img', 'w-full h-full object-cover transition-transform duration-500 group-hover:scale-110');
         img.src = photos[0];
         iconBox.appendChild(img);
 
-        // Индикатор количества, если больше 1
+        // Индикатор количества, если фоток больше 1
         if (photos.length > 1) {
             const countBadge = createEl('span', 'absolute bottom-1 right-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded backdrop-blur-sm font-bold', `+${photos.length - 1}`);
             iconBox.appendChild(countBadge);
         }
 
-        // Клик открывает лайтбокс
+        // Клик открывает лайтбокс с передачей всего массива
         iconBox.onclick = (e) => {
             e.stopPropagation();
-            // Вызываем глобальную функцию лайтбокса (добавим её в admin.html)
-            (window as any).openLightbox(photos[0]);
+            (window as any).openLightbox(photos, 0);
         };
     } else {
         // Стандартная иконка
