@@ -1,17 +1,21 @@
 from fastapi import APIRouter, Depends
 from ..db import supabase
-from ..auth import validate_telegram_data
+from ..auth import get_current_user  # <--- ИСПРАВЛЕНО: Импортируем get_current_user вместо validate_telegram_data
 from datetime import datetime, timedelta
 from collections import Counter
 
 router = APIRouter(prefix="/me/analytics", tags=["Analytics"])
 
 
+# <--- ИСПРАВЛЕНО: Используем get_current_user в Depends
 @router.get("/dashboard")
-async def get_dashboard_stats(user=Depends(validate_telegram_data)):
+async def get_dashboard_stats(user=Depends(get_current_user)):
     # 1. Проверяем Pro
+    # Используем user['id'], так как get_current_user возвращает словарь user_data
     master = supabase.table("masters").select("is_premium").eq("telegram_id", user['id']).single().execute()
-    if not master.data.get('is_premium'):
+
+    # Если записи нет или is_premium=False
+    if not master.data or not master.data.get('is_premium'):
         return {"is_premium": False}
 
     # 2. Берем данные за последние 30 дней
@@ -28,7 +32,8 @@ async def get_dashboard_stats(user=Depends(validate_telegram_data)):
 
     # 3. Считаем метрики (KPIs)
     completed_apps = [a for a in apps if a['status'] == 'completed']
-    revenue = sum(a['services']['price'] for a in completed_apps if a['services'])
+    # Безопасное получение цены (если services удален или null)
+    revenue = sum((a['services']['price'] if a['services'] else 0) for a in completed_apps)
     avg_check = round(revenue / len(completed_apps)) if completed_apps else 0
 
     # 4. Популярные услуги
@@ -50,7 +55,7 @@ async def get_dashboard_stats(user=Depends(validate_telegram_data)):
         # Ищем записи за этот день
         count = len([a for a in apps if a['starts_at'].startswith(d_str)])
         daily_stats.append({
-            "day": d.strftime("%d %b"),  # 21 Окт
+            "day": d.strftime("%d %b"),  # Пример: 21 Окт
             "value": count,
             "is_today": i == 0
         })
