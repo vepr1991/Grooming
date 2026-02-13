@@ -1,5 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"; // <--- Добавил Navigate
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthCheck } from "@/components/auth-check";
+import { Toaster } from "@/components/ui/sonner"; // Импорт уведомлений
 
 import { MasterLayout } from "@/components/layout/master-layout";
 import { ClientLayout } from "@/components/layout/client-layout";
@@ -12,9 +13,13 @@ import { ClientBookingPage } from "@/pages/client/booking-page";
 function App() {
   return (
     <BrowserRouter>
+      {/* Глобальный компонент уведомлений (всплывашки) */}
+      <Toaster position="top-center" richColors />
+
+      {/* Обертка для проверки авторизации */}
       <AuthCheck>
         <Routes>
-          {/* 👇 ГЛАВНОЕ ИСПРАВЛЕНИЕ: Перенаправляем с корня "/" на "/master" */}
+          {/* 👇 Перенаправляем с корня "/" на "/master" */}
           <Route path="/" element={<Navigate to="/master" replace />} />
 
           {/* Регистрация */}

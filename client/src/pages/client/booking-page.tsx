@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { format, addMinutes, isWithinInterval, areIntervalsOverlapping } from "date-fns"; // Добавили функции date-fns
+import { format, addMinutes, isWithinInterval, areIntervalsOverlapping } from "date-fns";
 import { ru } from "date-fns/locale";
-import { Check, User, Phone, PawPrint } from "lucide-react";
+import { Check, User, PawPrint } from "lucide-react";
+import { toast } from "sonner"; // <--- Импорт уведомлений
 
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input"; // <--- Импорт маски телефона
 
 type Salon = {
   id: string;
@@ -22,7 +24,6 @@ type Salon = {
 
 type Service = { id: string; title: string; price: number; duration_minutes: number };
 
-// Тип для занятого интервала
 type BusySlot = {
   start: Date;
   end: Date;
@@ -38,12 +39,9 @@ export function ClientBookingPage() {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [time, setTime] = useState<string | null>(null);
 
-  // Храним не просто строки, а интервалы занятости
   const [busySlots, setBusySlots] = useState<BusySlot[]>([]);
-
   const [clientData, setClientData] = useState({ name: "", phone: "", petName: "", petBreed: "" });
 
-  // 1. Исходная загрузка
   useEffect(() => {
     if (!salonId) return;
 
@@ -57,18 +55,12 @@ export function ClientBookingPage() {
     fetchData();
   }, [salonId]);
 
-  // 2. Загрузка занятых интервалов
   useEffect(() => {
     if (!salonId || !date) return;
 
     async function fetchBusySlots() {
       const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(date); endOfDay.setHours(23, 59, 59, 999);
-
-      // Нам нужно знать, когда заканчивается предыдущая запись
-      // Supabase не умеет джойнить сложно, поэтому возьмем start_time и service_id
-      // В идеале в таблице appointments хранить end_time. Мы это делали?
-      // Да! У нас есть end_time в таблице appointments. Супер.
 
       const { data } = await supabase
         .from('appointments')
@@ -91,7 +83,6 @@ export function ClientBookingPage() {
     setTime(null);
   }, [date, salonId]);
 
-  // 3. Генерация слотов с проверкой пересечений
   const generateTimeSlots = () => {
     if (!salon || !date) return [];
 
@@ -99,25 +90,19 @@ export function ClientBookingPage() {
     const [startHour, startMinute] = (salon.work_start || "10:00").split(":").map(Number);
     const [endHour, endMinute] = (salon.work_end || "20:00").split(":").map(Number);
 
-    // Начало рабочего дня (дата выбранная пользователем + часы работы)
     let currentSlot = new Date(date);
     currentSlot.setHours(startHour, startMinute, 0, 0);
 
-    // Конец рабочего дня
     const endWorkDay = new Date(date);
     endWorkDay.setHours(endHour, endMinute, 0, 0);
 
-    const stepMinutes = 30; // Шаг сетки
+    const stepMinutes = 30;
     const serviceDuration = selectedService ? selectedService.duration_minutes : 60;
 
     while (currentSlot < endWorkDay) {
-      // Рассчитываем, когда закончится услуга, если начать её СЕЙЧАС
       const potentialEnd = addMinutes(currentSlot, serviceDuration);
 
-      // 1. Проверяем: успеем ли до закрытия?
       if (potentialEnd <= endWorkDay) {
-
-        // 2. Проверяем: не пересекается ли с другими записями?
         const isOverlapping = busySlots.some(busy => {
           return areIntervalsOverlapping(
             { start: currentSlot, end: potentialEnd },
@@ -129,10 +114,9 @@ export function ClientBookingPage() {
 
         slots.push({
           time: timeString,
-          disabled: isOverlapping // Блокируем, если занято
+          disabled: isOverlapping
         });
       }
-
       currentSlot = addMinutes(currentSlot, stepMinutes);
     }
 
@@ -141,16 +125,29 @@ export function ClientBookingPage() {
 
   const timeSlots = generateTimeSlots();
 
-  // 4. Отправка
   const handleSubmit = async () => {
+    // Валидация
+    if (!clientData.name || !clientData.phone || !clientData.petName) {
+      toast.error("Пожалуйста, заполните все обязательные поля");
+      return;
+    }
+
+    // Простая проверка длины телефона (можно улучшить регуляркой)
+    if (clientData.phone.includes("_")) {
+      toast.error("Введите корректный номер телефона");
+      return;
+    }
+
     if (!selectedService || !date || !time || !salonId) return;
 
     const startDateTime = new Date(date);
     const [hours, minutes] = time.split(':');
     startDateTime.setHours(Number(hours), Number(minutes));
 
-    // Рассчитываем конец услуги для базы данных
     const endDateTime = addMinutes(startDateTime, selectedService.duration_minutes);
+
+    // Показываем лоадер (в виде toast)
+    const toastId = toast.loading("Оформляем запись...");
 
     const { error } = await supabase.from('appointments').insert([
       {
@@ -161,13 +158,14 @@ export function ClientBookingPage() {
         pet_name: clientData.petName,
         pet_breed: clientData.petBreed,
         start_time: startDateTime.toISOString(),
-        end_time: endDateTime.toISOString(), // <--- Теперь сохраняем реальный конец!
+        end_time: endDateTime.toISOString(),
         status: 'pending'
       }
     ]);
 
     if (error) {
-      alert("Ошибка: " + error.message);
+      toast.dismiss(toastId);
+      toast.error("Ошибка записи: " + error.message);
     } else {
       try {
         await fetch("http://localhost:8000/notify", {
@@ -186,11 +184,14 @@ export function ClientBookingPage() {
       } catch (err) {
         console.error("Ошибка уведомления:", err);
       }
+
+      toast.dismiss(toastId);
+      toast.success("Вы успешно записаны!"); // Успех!
       setStep(4);
     }
   };
 
-  if (!salon) return <div className="p-10 text-center">Загрузка салона...</div>;
+  if (!salon) return <div className="flex h-screen items-center justify-center">Загрузка салона...</div>;
 
   return (
     <div className="min-h-screen bg-white pb-10">
@@ -247,7 +248,7 @@ export function ClientBookingPage() {
                   key={index}
                   variant={time === slot.time ? "default" : "outline"}
                   onClick={() => setTime(slot.time)}
-                  disabled={slot.disabled} // <--- Теперь умная блокировка
+                  disabled={slot.disabled}
                   className={`w-full ${slot.disabled ? "opacity-30 bg-gray-100 decoration-slice line-through" : ""}`}
                 >
                   {slot.time}
@@ -273,13 +274,16 @@ export function ClientBookingPage() {
                    <Input className="pl-9" placeholder="Иван" value={clientData.name} onChange={e => setClientData({...clientData, name: e.target.value})} />
                 </div>
               </div>
+
               <div className="space-y-1">
                 <Label>Телефон</Label>
-                <div className="relative">
-                   <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                   <Input className="pl-9" placeholder="+7 700..." value={clientData.phone} onChange={e => setClientData({...clientData, phone: e.target.value})} />
-                </div>
+                {/* Используем наш новый компонент PhoneInput */}
+                <PhoneInput
+                  value={clientData.phone}
+                  onChange={(val) => setClientData({...clientData, phone: val})}
+                />
               </div>
+
               <div className="space-y-1">
                 <Label>Кличка питомца</Label>
                 <div className="relative">
@@ -309,6 +313,7 @@ export function ClientBookingPage() {
               {date ? format(date, 'd MMMM', { locale: ru }) : ''}
             </p>
              <p className="text-xs text-gray-400">Вам перезвонят для подтверждения</p>
+             <Button variant="outline" onClick={() => window.location.reload()}>На главную</Button>
           </div>
         )}
 
