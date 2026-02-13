@@ -1,28 +1,37 @@
-# --- Секреты (НИКОГДА НЕ ПУШИТЬ) ---
+# --- СИСТЕМНЫЕ ФАЙЛЫ ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- СЕКРЕТЫ (САМОЕ ВАЖНОЕ) ---
 .env
 .env.local
+.env.*.local
+*.pem
 
-# --- Python ---
+# --- PYTHON (BACKEND) ---
 __pycache__/
 *.py[cod]
 *$py.class
 .venv/
 venv/
 env/
+backend/venv/
+backend/.venv/
 
-# --- Node.js (Frontend) ---
-frontend/node_modules/
-frontend/dist/
-frontend/.output/
+# --- NODE.JS / REACT (CLIENT) ---
+node_modules/
+client/node_modules/
+dist/
+client/dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# --- OS ---
-.DS_Store
-.idea/
-.vscode/
-
-# --- Docker ---
-# Если вдруг docker создал локальные данные
-db_data/
+# --- LOGS ---
+logs/
+*.log
