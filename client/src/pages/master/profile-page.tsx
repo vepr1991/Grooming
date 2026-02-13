@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Save, Share2, MapPin, Phone, Store } from "lucide-react";
+import { Save, Share2, MapPin, Phone, Store, Clock } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,16 +11,17 @@ export function MasterProfilePage() {
   const [loading, setLoading] = useState(false);
   const [salonId, setSalonId] = useState<string | null>(localStorage.getItem("salon_id"));
 
-  // Данные формы
   const [formData, setFormData] = useState({
     name: "",
     address: "",
     phone: "",
     description: "",
-    slug: "", // Уникальная ссылка (например: grooming_almaty)
+    slug: "",
+    work_start: "10:00", // По умолчанию
+    work_end: "20:00",   // По умолчанию
   });
 
-  // 1. Загрузка данных (если салон уже есть)
+  // 1. Загрузка
   useEffect(() => {
     if (salonId) {
       async function loadSalon() {
@@ -32,6 +33,8 @@ export function MasterProfilePage() {
             phone: data.phone || "",
             description: data.description || "",
             slug: data.slug || "",
+            work_start: data.work_start || "10:00",
+            work_end: data.work_end || "20:00",
           });
         }
       }
@@ -39,122 +42,102 @@ export function MasterProfilePage() {
     }
   }, [salonId]);
 
-// 2. Сохранение (Создание или Обновление)
+  // 2. Сохранение
   const handleSave = async () => {
     setLoading(true);
 
-    // Подготовка данных
     const payload = {
       name: formData.name,
       address: formData.address,
       phone: formData.phone,
       description: formData.description,
-      slug: formData.slug || `salon_${Date.now()}`,
+      slug: formData.slug,
+      work_start: formData.work_start,
+      work_end: formData.work_end,
     };
 
-    let error;
-
-    // ВАЖНО: Убрали переменную newId, она путала TypeScript
-
-    if (salonId) {
-      // Обновляем существующий (тут у нас точно есть salonId)
-      const res = await supabase.from('salons').update(payload).eq('id', salonId);
-      error = res.error;
-    } else {
-      // Создаем новый
-      const res = await supabase.from('salons').insert([payload]).select().single();
-      error = res.error;
-
-      if (res.data) {
-        const createdId = res.data.id; // Берем ID напрямую из ответа базы
-        setSalonId(createdId);
-        localStorage.setItem("salon_id", createdId); // И сохраняем именно его
-      }
-    }
-
+    const { error } = await supabase.from('salons').update(payload).eq('id', salonId);
     setLoading(false);
 
     if (error) {
       alert("Ошибка: " + error.message);
     } else {
-      alert("Профиль сохранен!");
+      alert("Настройки сохранены!");
     }
   };
 
   // Ссылка для клиента
-  // В реальном Telegram это будет t.me/botname?startapp=salonId
-  // Пока используем прямую ссылку на сайт
-  const clientLink = salonId
-    ? `${window.location.origin}/client/${salonId}`
-    : "Сначала сохраните профиль";
+  const clientLink = salonId ? `${window.location.origin}/client/${salonId}` : "";
 
   return (
-    <div className="p-4 pb-24 space-y-6 min-h-screen bg-zinc-50">
-      <h1 className="text-2xl font-bold">Профиль салона</h1>
+    <div className="p-4 pb-24 space-y-6 bg-zinc-50 min-h-screen">
+      <h1 className="text-2xl font-bold">Настройки салона</h1>
 
-      {/* Карточка со ссылкой */}
-      {salonId && (
-        <Card className="bg-gradient-to-r from-zinc-900 to-zinc-800 text-white border-none">
-          <CardHeader>
-            <CardTitle className="text-lg">Ваша ссылка для клиентов</CardTitle>
-            <CardDescription className="text-zinc-400">
-              Отправьте её клиенту или добавьте в описание бота
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="p-3 bg-white/10 rounded mb-3 text-xs font-mono break-all">
-              {clientLink}
-            </div>
-            <Button
-              variant="secondary"
-              className="w-full gap-2"
-              onClick={() => {
-                navigator.clipboard.writeText(clientLink);
-                alert("Ссылка скопирована!");
-              }}
-            >
-              <Share2 className="h-4 w-4" /> Скопировать ссылку
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      {/* ССЫЛКА */}
+      <Card className="bg-zinc-900 text-white border-none">
+        <CardHeader>
+          <CardTitle className="text-lg">Ссылка для записи</CardTitle>
+          <CardDescription className="text-zinc-400">Отправьте её клиентам</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="p-3 bg-white/10 rounded mb-3 text-xs font-mono break-all text-zinc-300">
+            {clientLink}
+          </div>
+          <Button
+            variant="secondary"
+            className="w-full gap-2"
+            onClick={() => { navigator.clipboard.writeText(clientLink); alert("Скопировано!"); }}
+          >
+            <Share2 className="h-4 w-4" /> Скопировать
+          </Button>
+        </CardContent>
+      </Card>
 
-      {/* Форма редактирования */}
+      {/* ФОРМА */}
       <Card>
         <CardContent className="space-y-4 pt-6">
 
           <div className="space-y-2">
-            <Label className="flex items-center gap-2"><Store className="h-4 w-4"/> Название салона</Label>
+            <Label className="flex items-center gap-2"><Store className="h-4 w-4"/> Название</Label>
             <Input
-              placeholder="Grooming Studio Almaty"
               value={formData.name}
               onChange={e => setFormData({...formData, name: e.target.value})}
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Уникальный ID (Slug)</Label>
-            <Input
-              placeholder="best_grooming"
-              value={formData.slug}
-              onChange={e => setFormData({...formData, slug: e.target.value})}
-            />
-            <p className="text-xs text-gray-500">Латинскими буквами, без пробелов.</p>
+            <Label className="flex items-center gap-2"><Clock className="h-4 w-4"/> График работы</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs text-gray-500">Начало</Label>
+                <Input
+                  type="time"
+                  value={formData.work_start}
+                  onChange={e => setFormData({...formData, work_start: e.target.value})}
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-gray-500">Конец</Label>
+                <Input
+                  type="time"
+                  value={formData.work_end}
+                  onChange={e => setFormData({...formData, work_end: e.target.value})}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="space-y-2">
             <Label className="flex items-center gap-2"><MapPin className="h-4 w-4"/> Адрес</Label>
             <Input
-              placeholder="ул. Абая 150, оф. 2"
               value={formData.address}
               onChange={e => setFormData({...formData, address: e.target.value})}
             />
           </div>
 
           <div className="space-y-2">
-            <Label className="flex items-center gap-2"><Phone className="h-4 w-4"/> Телефон для связи</Label>
+            <Label className="flex items-center gap-2"><Phone className="h-4 w-4"/> Телефон</Label>
             <Input
-              placeholder="+7 777 000 00 00"
               value={formData.phone}
               onChange={e => setFormData({...formData, phone: e.target.value})}
             />
@@ -163,15 +146,13 @@ export function MasterProfilePage() {
           <div className="space-y-2">
             <Label>Описание</Label>
             <Textarea
-              placeholder="Лучшие стрижки для йорков и шпицев..."
               value={formData.description}
               onChange={e => setFormData({...formData, description: e.target.value})}
             />
           </div>
 
-          <Button onClick={handleSave} className="w-full bg-black text-white" disabled={loading}>
-            {loading ? "Сохранение..." : "Сохранить изменения"}
-            {!loading && <Save className="ml-2 h-4 w-4" />}
+          <Button onClick={handleSave} className="w-full bg-green-600 hover:bg-green-700 text-white h-12">
+            {loading ? "Сохраняем..." : "Сохранить изменения"}
           </Button>
 
         </CardContent>
