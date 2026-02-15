@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
-// Твой URL бекенда
 const BACKEND_URL = "https://grooming-tma.onrender.com";
 
 export function AuthCheck({ children }: { children: React.ReactNode }) {
