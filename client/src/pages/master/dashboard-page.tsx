@@ -13,7 +13,8 @@ import {
   Plus,
   User,
   Clock,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  Copy
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -216,25 +217,21 @@ export function MasterDashboardPage() {
 function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUpdate: (id: string, s: Appointment['status']) => void }) {
   const [expanded, setExpanded] = useState(false);
 
-  // 👇 НОВАЯ ЛОГИКА ДЛЯ ССЫЛКИ НА ТЕЛЕГРАМ
   let tgUsername = null;
   try {
     if (app.client_tg_user) {
-      // Поддержка и объекта, и строки
       const userObj = typeof app.client_tg_user === 'string'
         ? JSON.parse(app.client_tg_user)
         : app.client_tg_user;
-
       tgUsername = userObj?.username;
     }
   } catch (e) {
     console.error("Failed to parse tg user", e);
   }
 
-  // Очистка телефона для ссылки tel:
+  // Очистка номера
   const cleanPhone = app.client_phone.replace(/[^0-9+]/g, '');
 
-  // Если есть никнейм - ссылка на него, иначе fallback на WhatsApp
   const chatLink = tgUsername
     ? `https://t.me/${tgUsername}`
     : `https://wa.me/${cleanPhone}`;
@@ -272,18 +269,23 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
               <p className="text-[15px] font-bold text-black truncate">{app.pet_breed || "Порода не указана"}</p>
               <div className="bg-[#F2F2F7] rounded-xl p-2.5"><p className="text-[13px] font-semibold text-black truncate">{sInfo?.title}</p><p className="text-[11px] text-[#8E8E93]">{sInfo?.duration_minutes || '30'} мин • {sInfo?.price || '0'} ₸</p></div>
               <p className="text-[13px] text-[#8E8E93] pt-1 font-medium">Владелец: {app.client_name}</p>
+
               <div className="flex items-center gap-2 mt-3">
-
-                {/* 👇 КНОПКА ВЫЗОВА: С защитой от всплытия клика и очищенным номером */}
-                <a
-                  href={`tel:${cleanPhone}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex-1 flex items-center justify-center gap-2 bg-[#E8F2FF] text-[#007AFF] py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all"
+                {/* 👇 НОВАЯ КНОПКА: СКОПИРОВАТЬ НОМЕР */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(app.client_phone);
+                    toast.success("Номер скопирован");
+                    // Пробуем открыть звонилку после копирования
+                    window.location.href = `tel:${cleanPhone}`;
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 bg-[#F2F2F7] text-black py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all"
                 >
-                  <Phone size={14} /> Вызов
-                </a>
+                  <Copy size={14} /> {app.client_phone}
+                </button>
 
-                {/* 👇 КНОПКА МЕССЕНДЖЕРА: С защитой от всплытия клика */}
+                {/* Кнопка мессенджера */}
                 <a
                   href={chatLink}
                   target="_blank"
@@ -295,6 +297,7 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
                   {isTelegram ? 'Telegram' : 'WhatsApp'}
                 </a>
               </div>
+
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 mt-2 pt-3 border-t border-[#F2F2F7]">
