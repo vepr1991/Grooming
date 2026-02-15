@@ -118,56 +118,48 @@ export function ClientBookingPage() {
     fetchBusySlots();
   }, [selectedDate, salonId]);
 
+
   // Генерация доступных окон (слотов)
   const getSlots = () => {
     if (!salon || !salon.schedule) return [];
-
-    // Получаем день недели
     const dayName = format(selectedDate, 'eeeeee', { locale: ru }).toLowerCase();
     const dayConfig = salon.schedule.find(d => d.day.toLowerCase() === dayName);
 
     if (!dayConfig || !dayConfig.isWorking) return [];
 
     const slots: string[] = [];
-
-    // Парсим время начала и конца рабочего дня
     let current = parse(dayConfig.hours.start, 'HH:mm', selectedDate);
     const endWorkDay = parse(dayConfig.hours.end, 'HH:mm', selectedDate);
 
     while (isBefore(current, endWorkDay)) {
       const timeStr = format(current, 'HH:mm');
-
-      // Длительность услуги (по умолчанию 30 мин)
       const duration = selectedService?.duration_minutes || 30;
 
-      // Рассчитываем время начала и конца ПОТЕНЦИАЛЬНОГО слота
       const slotStart = new Date(current);
       const slotEnd = addMinutes(slotStart, duration);
 
-      // Проверяем пересечение с существующими записями
       const isBusy = existingAppointments.some(app => {
-        // Преобразуем строки из базы в объекты Date
-        const appStart = new Date(app.start_time);
-        const appEnd = new Date(app.end_time);
+        // 👇 ИСПРАВЛЕНИЕ: Игнорируем часовой пояс (+00 или Z)
+        // Превращаем "2026-02-16T10:00:00+00" в "2026-02-16T10:00:00"
+        // Браузер воспримет это как МЕСТНОЕ время
+        const cleanStart = app.start_time.replace(' ', 'T').replace(/(Z|\+.*)$/, '');
+        const cleanEnd = app.end_time.replace(' ', 'T').replace(/(Z|\+.*)$/, '');
 
-        // Формула пересечения отрезков: (StartA < EndB) && (EndA > StartB)
-        // Если слот начинается раньше, чем заканчивается запись, И слот заканчивается позже, чем начинается запись
-        // Добавляем небольшой буфер (1 мс), чтобы стык в стык не считалось занятым
+        const appStart = new Date(cleanStart);
+        const appEnd = new Date(cleanEnd);
+
+        // Проверка пересечения
         return slotStart < appEnd && slotEnd > appStart;
       });
 
-      // Проверка на прошедшее время (если выбран сегодня)
       const isPast = isSameDay(selectedDate, new Date()) && isBefore(current, new Date());
 
-      if (!isBusy && !isPast) {
-        slots.push(timeStr);
-      }
-
-      // Шаг сетки (по умолчанию 30 мин)
+      if (!isBusy && !isPast) slots.push(timeStr);
       current = addMinutes(current, salon.slot_step || 30);
     }
     return slots;
   };
+
 
   // Функция создания .ics файла для календаря
   const handleCalendarDownload = () => {
