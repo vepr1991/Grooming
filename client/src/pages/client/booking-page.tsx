@@ -37,7 +37,7 @@ type Service = {
 };
 
 // ЗАМЕНИ НА СВОЙ URL ПОСЛЕ ДЕПЛОЯ НА RENDER
-const BACKEND_URL = "https://grooming-backend-up4v.onrender.com";
+const BACKEND_URL = "https://grooming-tma.onrender.com";
 
 export function ClientBookingPage() {
   const { salonId } = useParams();
