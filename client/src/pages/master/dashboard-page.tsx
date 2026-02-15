@@ -79,7 +79,6 @@ export function MasterDashboardPage() {
     const duration = selectedS?.duration_minutes || 30;
     const startDate = new Date(`${newApp.date}T${newApp.time}:00`);
     const start_time = startDate.toISOString();
-    // ИСПРАВЛЕНИЕ: addMinutes теперь импортирован
     const end_time = addMinutes(startDate, duration).toISOString();
 
     const { error } = await supabase.from('appointments').insert([{
@@ -114,7 +113,9 @@ export function MasterDashboardPage() {
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const offset = firstDay === 0 ? 6 : firstDay - 1;
-    const days = [];
+
+    // ИСПРАВЛЕНИЕ: Явный тип для массива элементов
+    const days: React.ReactNode[] = [];
 
     for (let i = 0; i < offset; i++) days.push(<div key={`prev-${i}`} className="h-12"></div>);
 

@@ -112,7 +112,7 @@ export function ClientBookingPage() {
     fetchBusySlots();
   }, [selectedDate, salonId]);
 
-  // Генерация доступных окон (слотов)
+// Генерация доступных окон (слотов)
   const getSlots = () => {
     if (!salon || !salon.schedule) return [];
     const dayName = format(selectedDate, 'eeeeee', { locale: ru }).toLowerCase();
@@ -120,7 +120,9 @@ export function ClientBookingPage() {
 
     if (!dayConfig || !dayConfig.isWorking) return [];
 
-    const slots = [];
+    // ИСПРАВЛЕНИЕ: Явно указываем тип string[]
+    const slots: string[] = [];
+
     let current = parse(dayConfig.hours.start, 'HH:mm', selectedDate);
     const end = parse(dayConfig.hours.end, 'HH:mm', selectedDate);
 
