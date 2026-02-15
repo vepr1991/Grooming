@@ -36,7 +36,7 @@ type Service = {
   image_url: string;
 };
 
-// ЗАМЕНИ НА СВОЙ URL ПОСЛЕ ДЕПЛОЯ НА RENDER
+// ЗАМЕНИ НА СВОЙ АДРЕС БЕКЕНДА
 const BACKEND_URL = "https://grooming-tma.onrender.com";
 
 export function ClientBookingPage() {
@@ -112,7 +112,7 @@ export function ClientBookingPage() {
     fetchBusySlots();
   }, [selectedDate, salonId]);
 
-// Генерация доступных окон (слотов)
+  // Генерация доступных окон (слотов)
   const getSlots = () => {
     if (!salon || !salon.schedule) return [];
     const dayName = format(selectedDate, 'eeeeee', { locale: ru }).toLowerCase();
@@ -120,9 +120,7 @@ export function ClientBookingPage() {
 
     if (!dayConfig || !dayConfig.isWorking) return [];
 
-    // ИСПРАВЛЕНИЕ: Явно указываем тип string[]
     const slots: string[] = [];
-
     let current = parse(dayConfig.hours.start, 'HH:mm', selectedDate);
     const end = parse(dayConfig.hours.end, 'HH:mm', selectedDate);
 
@@ -175,6 +173,11 @@ export function ClientBookingPage() {
     if (!selectedService || !selectedTime || !salonId) return;
 
     setLoading(true);
+
+    // 👇 ПОЛУЧАЕМ ДАННЫЕ TG ПОЛЬЗОВАТЕЛЯ
+    // @ts-ignore
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+
     try {
       const response = await fetch(`${BACKEND_URL}/api/book`, {
         method: 'POST',
@@ -184,7 +187,12 @@ export function ClientBookingPage() {
           service: selectedService,
           date: format(selectedDate, 'yyyy-MM-dd'),
           time: selectedTime,
-          client: { name: formData.name, phone: formData.phone },
+          client: {
+            name: formData.name,
+            phone: formData.phone,
+            // ✅ ОТПРАВЛЯЕМ ПОЛЬЗОВАТЕЛЯ ТЕЛЕГРАМ
+            telegram_user: tgUser || null
+          },
           pet: { name: formData.petName, petBreed: formData.petBreed }
         })
       });

@@ -24,7 +24,7 @@ type Appointment = {
   id: string;
   client_name: string;
   client_phone: string;
-  client_tg_user?: string;
+  client_tg_user?: string | any; // Может быть JSON строкой или объектом
   pet_name: string;
   pet_breed: string;
   start_time: string;
@@ -114,7 +114,6 @@ export function MasterDashboardPage() {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const offset = firstDay === 0 ? 6 : firstDay - 1;
 
-    // ИСПРАВЛЕНИЕ: Явный тип для массива элементов
     const days: React.ReactNode[] = [];
 
     for (let i = 0; i < offset; i++) days.push(<div key={`prev-${i}`} className="h-12"></div>);
@@ -217,10 +216,29 @@ export function MasterDashboardPage() {
 function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUpdate: (id: string, s: Appointment['status']) => void }) {
   const [expanded, setExpanded] = useState(false);
 
-  const clientTg = app.client_tg_user;
+  // 👇 НОВАЯ ЛОГИКА ДЛЯ ССЫЛКИ НА ТЕЛЕГРАМ
+  let tgUsername = null;
+  try {
+    if (app.client_tg_user) {
+      // Поддержка и объекта, и строки
+      const userObj = typeof app.client_tg_user === 'string'
+        ? JSON.parse(app.client_tg_user)
+        : app.client_tg_user;
+
+      tgUsername = userObj?.username;
+    }
+  } catch (e) {
+    console.error("Failed to parse tg user", e);
+  }
+
   const cleanPhone = app.client_phone.replace(/\D/g, '');
-  const chatLink = clientTg ? `https://t.me/${clientTg}` : `https://wa.me/${cleanPhone}`;
-  const isTelegram = !!clientTg;
+
+  // Если есть никнейм - ссылка на него, иначе fallback на WhatsApp
+  const chatLink = tgUsername
+    ? `https://t.me/${tgUsername}`
+    : `https://wa.me/${cleanPhone}`;
+
+  const isTelegram = !!tgUsername;
 
   const statusConfig: any = {
     pending: { bg: '#FFF4D6', text: '#855E00', label: 'ОЖИДАЕТ' },
@@ -255,6 +273,8 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
               <p className="text-[13px] text-[#8E8E93] pt-1 font-medium">Владелец: {app.client_name}</p>
               <div className="flex items-center gap-2 mt-3">
                 <a href={`tel:${app.client_phone}`} className="flex-1 flex items-center justify-center gap-2 bg-[#E8F2FF] text-[#007AFF] py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all"><Phone size={14} /> Вызов</a>
+
+                {/* 👇 УМНАЯ КНОПКА: Telegram или WhatsApp */}
                 <a href={chatLink} target="_blank" rel="noopener noreferrer" className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all ${isTelegram ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}>
                   {isTelegram ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg> : <MessageSquare size={14} />}
                   {isTelegram ? 'Telegram' : 'WhatsApp'}
