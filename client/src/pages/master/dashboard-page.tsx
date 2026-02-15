@@ -306,6 +306,7 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
     console.error("Failed to parse tg user", e);
   }
 
+  // Очистка номера
   const cleanPhone = app.client_phone.replace(/[^0-9+]/g, '');
 
   const chatLink = tgUsername
@@ -347,6 +348,7 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
               <p className="text-[13px] text-[#8E8E93] pt-1 font-medium">Владелец: {app.client_name}</p>
 
               <div className="flex items-center gap-2 mt-3">
+                {/* 👇 ИСПРАВЛЕННАЯ КНОПКА (whitespace-nowrap + gap-1.5) */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -354,17 +356,18 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
                     toast.success("Номер скопирован");
                     window.location.href = `tel:${cleanPhone}`;
                   }}
-                  className="flex-1 flex items-center justify-center gap-2 bg-[#F2F2F7] text-black py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all"
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-[#F2F2F7] text-black py-2.5 px-1 rounded-full text-[13px] font-bold whitespace-nowrap active:scale-95 transition-all"
                 >
-                  <Copy size={14} /> {app.client_phone}
+                  <Copy size={14} className="shrink-0" /> {app.client_phone}
                 </button>
 
+                {/* Кнопка мессенджера */}
                 <a
                   href={chatLink}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all ${isTelegram ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-1 rounded-full text-[13px] font-bold whitespace-nowrap active:scale-95 transition-all ${isTelegram ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}
                 >
                   {isTelegram ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg> : <MessageSquare size={14} />}
                   {isTelegram ? 'Telegram' : 'WhatsApp'}
