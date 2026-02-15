@@ -1,16 +1,37 @@
 import os
 import threading
-from fastapi import FastAPI, HTTPException
+import logging
+from datetime import datetime, timedelta
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
 import telebot
-from datetime import datetime, timedelta
+from telebot import types
 
-# Инициализация FastAPI
-app = FastAPI()
+# --- 1. Настройка Логирования (чтобы видеть ошибки в Render) ---
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-# Настройка CORS для работы с фронтендом
+# --- 2. Конфигурация и инициализация ---
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+if not all([SUPABASE_URL, SUPABASE_KEY, TELEGRAM_BOT_TOKEN]):
+    logger.critical("⚠️ ОШИБКА: Не заданы переменные окружения! Проверьте .env или настройки Render.")
+
+# Клиенты
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
+app = FastAPI(title="Grooming API", version="2.0")
+
+# CORS (разрешаем запросы с любого фронтенда)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,91 +39,189 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Инициализация ресурсов из переменных окружения
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
+# --- 3. Модели данных (Pydantic) ---
+class ClientInfo(BaseModel):
+    name: str
+    phone: str
 
-# Модели данных для API
-class BookingData(BaseModel):
+
+class PetInfo(BaseModel):
+    name: str
+    petBreed: Optional[str] = ""
+
+
+class ServiceInfo(BaseModel):
+    id: str
+    title: str
+    duration_minutes: int
+
+
+class BookingRequest(BaseModel):
     salonId: str
-    service: dict
-    date: str
-    time: str
-    client: dict
-    pet: dict
+    service: ServiceInfo
+    date: str  # YYYY-MM-DD
+    time: str  # HH:MM
+    client: ClientInfo
+    pet: PetInfo
+
+
+# --- 4. Бизнес-логика (из старого бота и сервисов) ---
+
+def check_overlap(salon_id: str, start_time: datetime, end_time: datetime) -> bool:
+    """Проверяет, не занят ли слот."""
+    try:
+        response = supabase.table("appointments") \
+            .select("id") \
+            .eq("salon_id", salon_id) \
+            .neq("status", "canceled") \
+            .lt("start_time", end_time.isoformat()) \
+            .gt("end_time", start_time.isoformat()) \
+            .execute()
+        return len(response.data) > 0
+    except Exception as e:
+        logger.error(f"Ошибка проверки слотов: {e}")
+        return True  # Лучше перестраховаться и сказать "занято"
+
+
+def send_telegram_notification_task(salon_id: str, booking_data: BookingRequest, start_dt: datetime):
+    """
+    Фоновая задача: Отправка уведомления мастеру.
+    Взята логика из старого bot/main.py, но адаптирована.
+    """
+    try:
+        # 1. Ищем салон и ID чата мастера
+        res = supabase.table("salons").select("telegram_chat_id, name").eq("id", salon_id).single().execute()
+
+        if not res.data:
+            logger.warning(f"Салон {salon_id} не найден для уведомления")
+            return
+
+        master_chat_id = res.data.get("telegram_chat_id")
+        salon_name = res.data.get("name")
+
+        if master_chat_id:
+            # Красивое сообщение с Markdown
+            msg = (
+                f"🔔 *Новая запись в {salon_name}!*\n\n"
+                f"👤 *Клиент:* {booking_data.client.name}\n"
+                f"📞 *Тел:* `{booking_data.client.phone}`\n"
+                f"🐶 *Питомец:* {booking_data.pet.name} {f'({booking_data.pet.petBreed})' if booking_data.pet.petBreed else ''}\n"
+                f"✂️ *Услуга:* {booking_data.service.title}\n"
+                f"📅 *Дата:* {start_dt.strftime('%d.%m.%Y')}\n"
+                f"⏰ *Время:* {start_dt.strftime('%H:%M')}\n\n"
+                f"_Зайдите в приложение, чтобы подтвердить._"
+            )
+
+            # Добавляем кнопку для быстрого перехода в Web App
+            markup = types.InlineKeyboardMarkup()
+            # Важно: Замени URL на свой продакшн URL фронтенда
+            web_app_url = "https://your-frontend.vercel.app/master"
+            btn = types.InlineKeyboardButton("Открыть админку", url=web_app_url)
+            markup.add(btn)
+
+            bot.send_message(master_chat_id, msg, parse_mode="Markdown", reply_markup=markup)
+            logger.info(f"Уведомление отправлено мастеру: {master_chat_id}")
+        else:
+            logger.info(f"У салона {salon_name} не настроен telegram_chat_id")
+
+    except Exception as e:
+        logger.error(f"Ошибка отправки Telegram уведомления: {e}")
+
+
+# --- 5. API Endpoints ---
 
 @app.get("/")
 def health_check():
-    return {"status": "Grooming API is active"}
+    return {"status": "active", "service": "Grooming Backend"}
+
 
 @app.post("/api/book")
-async def create_booking(data: BookingData):
+async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks):
     try:
-        # 1. Расчет времени начала и конца
-        start_dt = datetime.fromisoformat(f"{data.date}T{data.time}:00")
-        duration = data.service.get('duration_minutes', 30)
+        logger.info(f"Запрос на запись: {data.client.name} -> {data.salonId}")
+
+        # Парсинг времени
+        try:
+            start_dt = datetime.fromisoformat(f"{data.date}T{data.time}:00")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Неверный формат даты")
+
+        duration = data.service.duration_minutes or 30
         end_dt = start_dt + timedelta(minutes=duration)
 
-        # 2. Сохранение в базу через Service Role (обходим RLS)
-        res = supabase.table("appointments").insert({
+        # Проверка на пересечения
+        if check_overlap(data.salonId, start_dt, end_dt):
+            raise HTTPException(status_code=409, detail="Это время уже занято")
+
+        # Сохранение
+        insert_payload = {
             "salon_id": data.salonId,
-            "service_id": data.service['id'],
-            "client_name": data.client['name'],
-            "client_phone": data.client['phone'],
-            "pet_name": data.pet['name'],
-            "pet_breed": data.pet.get('petBreed', ''),
+            "service_id": data.service.id,
+            "client_name": data.client.name,
+            "client_phone": data.client.phone,
+            "pet_name": data.pet.name,
+            "pet_breed": data.pet.petBreed,
             "start_time": start_dt.isoformat(),
             "end_time": end_dt.isoformat(),
             "status": "pending"
-        }).execute()
+        }
+
+        res = supabase.table("appointments").insert(insert_payload).execute()
 
         if not res.data:
-            raise Exception("Ошибка вставки в БД")
+            raise HTTPException(status_code=500, detail="Ошибка базы данных")
 
-        # 3. Уведомление мастера в Telegram
-        salon_res = supabase.table("salons").select("telegram_chat_id, name").eq("id", data.salonId).single().execute()
-        master_id = salon_res.data.get("telegram_chat_id")
-
-        if master_id:
-            msg = (
-                f"🔔 *Новая запись!*\n\n"
-                f"👤 Клиент: {data.client['name']}\n"
-                f"📞 Тел: {data.client['phone']}\n"
-                f"🐶 Питомец: {data.pet['name']} ({data.pet.get('petBreed', '---')})\n"
-                f"✂️ Услуга: {data.service['title']}\n"
-                f"📅 Дата: {data.date}\n"
-                f"⏰ Время: {data.time}\n"
-            )
-            bot.send_message(master_id, msg, parse_mode="Markdown")
+        # Запуск фоновой задачи (отправка в ТГ)
+        background_tasks.add_task(send_telegram_notification_task, data.salonId, data, start_dt)
 
         return {"success": True, "id": res.data[0]['id']}
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        print(f"Booking Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Critical Error: {e}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
-# --- Логика Телеграм-бота ---
+
+# --- 6. Логика Бота (Интерактив) ---
 
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
-    # Команда /start поможет мастеру узнать свой chat_id для настроек
-    welcome_text = (
-        f"Привет! Ваш Telegram ID: `{message.chat.id}`\n\n"
-        "Скопируйте его и вставьте в профиль мастера, чтобы получать уведомления о записях."
+def handle_start(message):
+    """
+    Команда /start. Показывает ID мастера, чтобы он мог вставить его в админку.
+    """
+    chat_id = message.chat.id
+    username = message.from_user.username
+
+    logger.info(f"Новый пользователь бота: {username} ({chat_id})")
+
+    text = (
+        f"👋 Привет, {message.from_user.first_name}!\n\n"
+        f"Твой Chat ID: `{chat_id}`\n\n"
+        "1. Скопируй этот ID (нажми на него).\n"
+        "2. Вставь его при регистрации салона, чтобы получать уведомления."
     )
-    bot.reply_to(message, welcome_text, parse_mode="Markdown")
+    bot.reply_to(message, text, parse_mode="Markdown")
 
-# Запуск бота в отдельном потоке, чтобы он не мешал API
-def run_bot():
-    bot.infinity_polling()
 
-threading.Thread(target=run_bot, daemon=True).start()
+# Запуск бота в отдельном потоке
+def start_bot_polling():
+    try:
+        # Удаляем вебхук на всякий случай, чтобы polling работал
+        bot.remove_webhook()
+        logger.info("🤖 Бот запущен (Polling)...")
+        bot.infinity_polling()
+    except Exception as e:
+        logger.error(f"Бот упал: {e}")
+
+
+# Запускаем только если это не перезагрузка uvicorn (защита от дублей)
+if os.environ.get("RUN_BOT") != "false":
+    threading.Thread(target=start_bot_polling, daemon=True).start()
 
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
