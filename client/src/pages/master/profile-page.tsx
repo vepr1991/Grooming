@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { Camera, MapPin, Phone, Share, Globe, Mail, Save, Scissors, Edit3 } from "lucide-react";
+import { Camera, MapPin, Phone, Share, Globe, Mail, Save, Scissors, Edit3, Timer } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
+
+type ScheduleDay = {
+  day: string;
+  isWorking: boolean;
+  hours: { start: string; end: string };
+};
 
 export function MasterProfilePage() {
   const [loading, setLoading] = useState(false);
@@ -15,7 +21,9 @@ export function MasterProfilePage() {
     address: "",
     phone: "",
     description: "",
-    photo_url: ""
+    photo_url: "",
+    schedule: [] as ScheduleDay[],
+    slot_step: 30
   });
 
   useEffect(() => {
@@ -33,7 +41,9 @@ export function MasterProfilePage() {
             address: data.address || "",
             phone: data.phone || "",
             description: data.description || "",
-            photo_url: data.photo_url || ""
+            photo_url: data.photo_url || "",
+            schedule: data.schedule || [],
+            slot_step: data.slot_step || 30
           });
         }
       }
@@ -57,7 +67,9 @@ export function MasterProfilePage() {
         address: formData.address,
         phone: formData.phone,
         description: formData.description,
-        photo_url: formData.photo_url
+        photo_url: formData.photo_url,
+        schedule: formData.schedule,
+        slot_step: formData.slot_step
       })
       .eq('id', salonId);
 
@@ -70,6 +82,26 @@ export function MasterProfilePage() {
       toast.success("Профиль обновлен! ✨");
       setIsEditing(false);
     }
+  };
+
+  const toggleDay = (dayName: string) => {
+    if (!isEditing) return;
+    setFormData(prev => ({
+      ...prev,
+      schedule: prev.schedule.map(d =>
+        d.day === dayName ? { ...d, isWorking: !d.isWorking } : d
+      )
+    }));
+  };
+
+  const updateHours = (dayName: string, type: 'start' | 'end', value: string) => {
+    if (!isEditing) return;
+    setFormData(prev => ({
+      ...prev,
+      schedule: prev.schedule.map(d =>
+        d.day === dayName ? { ...d, hours: { ...d.hours, [type]: value } } : d
+      )
+    }));
   };
 
   const handleCopyLink = () => {
@@ -89,6 +121,7 @@ export function MasterProfilePage() {
         <h1 className="text-[34px] font-extrabold tracking-tight text-black">Профиль</h1>
       </div>
 
+      {/* Аватарка */}
       <div className="flex flex-col items-center mb-4 px-5">
         <div className="relative">
           <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-white shadow-xl bg-white flex items-center justify-center">
@@ -115,51 +148,134 @@ export function MasterProfilePage() {
         )}
       </div>
 
-      <div className="px-5 space-y-5">
-        <div className="space-y-1.5">
-          <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 flex items-center gap-1.5 tracking-wide">
-            <Globe size={14} className="text-[#5856D6]" /> Название салона
-          </label>
-          <div className={fieldContainerClass(isEditing)}>
-            <input
-              disabled={!isEditing}
-              placeholder="Введите название"
-              value={formData.name}
-              onChange={e => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-3 bg-transparent text-[17px] font-medium outline-none caret-[#007AFF] disabled:text-black opacity-100"
-            />
+      <div className="px-5 space-y-7">
+
+        {/* Контактная информация */}
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 flex items-center gap-1.5">
+              <Globe size={14} className="text-[#5856D6]" /> Название салона
+            </label>
+            <div className={fieldContainerClass(isEditing)}>
+              <input
+                disabled={!isEditing}
+                placeholder="Введите название"
+                value={formData.name}
+                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                className="w-full px-4 py-3 bg-transparent text-[17px] font-medium outline-none caret-[#007AFF] disabled:text-black opacity-100"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 flex items-center gap-1.5">
+              <MapPin size={14} className="text-[#FF9500]" /> Адрес
+            </label>
+            <div className={fieldContainerClass(isEditing)}>
+              <input
+                disabled={!isEditing}
+                placeholder="Город, улица..."
+                value={formData.address}
+                onChange={e => setFormData({ ...formData, address: e.target.value })}
+                className="w-full px-4 py-3 bg-transparent text-[17px] font-medium outline-none caret-[#007AFF] disabled:text-black opacity-100"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 flex items-center gap-1.5">
+              <Phone size={14} className="text-[#34C759]" /> Телефон
+            </label>
+            <div className={`${fieldContainerClass(isEditing)} p-3.5`}>
+              <PhoneInput
+                disabled={!isEditing}
+                value={formData.phone}
+                onChange={val => setFormData({ ...formData, phone: val })}
+                className="border-none shadow-none h-auto p-0 text-[17px] font-medium focus-visible:ring-0 caret-[#007AFF] disabled:text-black opacity-100"
+              />
+            </div>
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 flex items-center gap-1.5 tracking-wide">
-            <MapPin size={14} className="text-[#FF9500]" /> Адрес
-          </label>
-          <div className={fieldContainerClass(isEditing)}>
-            <input
-              disabled={!isEditing}
-              placeholder="Город, улица..."
-              value={formData.address}
-              onChange={e => setFormData({ ...formData, address: e.target.value })}
-              className="w-full px-4 py-3 bg-transparent text-[17px] font-medium outline-none caret-[#007AFF] disabled:text-black opacity-100"
-            />
-          </div>
-        </div>
+        {/* График работы (Твой пример) */}
+        <section className="space-y-2">
+          <h2 className="text-[12px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">График работы</h2>
+          <div className="bg-white rounded-[16px] overflow-hidden shadow-sm border border-slate-100 divide-y divide-[#F2F2F7]">
+            {formData.schedule.map((day) => (
+              <div key={day.day} className="flex flex-col transition-all duration-300">
+                <div className="flex items-center justify-between px-4 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <span className={`text-[16px] font-bold w-6 ${day.isWorking ? 'text-black' : 'text-[#C7C7CC]'}`}>
+                      {day.day}
+                    </span>
+                    {day.isWorking ? (
+                      <div className="flex items-center gap-1.5 text-[14px] font-semibold text-[#007AFF] animate-in fade-in duration-300">
+                        <input
+                          type="time"
+                          disabled={!isEditing}
+                          value={day.hours.start}
+                          onChange={(e) => updateHours(day.day, 'start', e.target.value)}
+                          className="bg-transparent outline-none w-[42px] p-0 disabled:text-[#007AFF]"
+                        />
+                        <span className="text-[#C7C7CC] font-normal">—</span>
+                        <input
+                          type="time"
+                          disabled={!isEditing}
+                          value={day.hours.end}
+                          onChange={(e) => updateHours(day.day, 'end', e.target.value)}
+                          className="bg-transparent outline-none w-[42px] p-0 disabled:text-[#007AFF]"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-[13px] font-medium text-[#C7C7CC]">Выходной</span>
+                    )}
+                  </div>
 
-        <div className="space-y-1.5">
-          <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 flex items-center gap-1.5 tracking-wide">
-            <Phone size={14} className="text-[#34C759]" /> Телефон
-          </label>
-          <div className={`${fieldContainerClass(isEditing)} p-3.5`}>
-            <PhoneInput
-              disabled={!isEditing}
-              value={formData.phone}
-              onChange={val => setFormData({ ...formData, phone: val })}
-              className="border-none shadow-none h-auto p-0 text-[17px] font-medium focus-visible:ring-0 caret-[#007AFF] disabled:text-black opacity-100"
-            />
+                  <button
+                    disabled={!isEditing}
+                    onClick={() => toggleDay(day.day)}
+                    className={`w-[44px] h-[26px] rounded-full transition-all duration-200 relative shrink-0 ${day.isWorking ? 'bg-[#34C759]' : 'bg-[#E5E5EA]'} ${!isEditing && 'opacity-60'}`}
+                  >
+                    <div className={`absolute top-[2px] w-[22px] h-[22px] bg-white rounded-full shadow-sm transition-all duration-200 ${day.isWorking ? 'left-[20px]' : 'left-[2px]'}`}></div>
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+        </section>
 
+        {/* Параметры записи (Твой пример) */}
+        <section className="space-y-2">
+          <h2 className="text-[12px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Параметры записи</h2>
+          <div className="bg-white rounded-[16px] p-4 shadow-sm border border-slate-100">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="bg-[#007AFF]/10 p-1.5 rounded-[6px] text-[#007AFF]">
+                  <Timer size={16} />
+                </div>
+                <span className="text-[15px] font-bold text-black">Шаг записи</span>
+              </div>
+              <span className="text-[13px] text-[#8E8E93] font-medium">{formData.slot_step} мин</span>
+            </div>
+
+            <div className="flex bg-[#F2F2F7] p-1 rounded-[10px]">
+              {[15, 30, 60].map(step => (
+                <button
+                  key={step}
+                  disabled={!isEditing}
+                  onClick={() => setFormData({ ...formData, slot_step: step })}
+                  className={`flex-1 py-1.5 text-[14px] font-bold rounded-[8px] transition-all ${
+                    formData.slot_step === step ? 'bg-white shadow-sm text-[#007AFF]' : 'text-[#8E8E93]'
+                  } ${!isEditing && formData.slot_step !== step && 'opacity-40'}`}
+                >
+                  {step} м
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Описание */}
         <div className="space-y-1.5">
           <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 tracking-wide">Описание для клиентов</label>
           <div className={fieldContainerClass(isEditing)}>
@@ -174,6 +290,7 @@ export function MasterProfilePage() {
           </div>
         </div>
 
+        {/* Кнопки действий */}
         <div className="pt-4 space-y-3">
           {isEditing ? (
             <button
@@ -198,21 +315,6 @@ export function MasterProfilePage() {
           >
             <Share size={20} /> Ссылка для клиентов
           </button>
-        </div>
-
-        <div className="bg-white rounded-[16px] p-5 shadow-sm border border-slate-100 mt-4">
-           <div className="flex items-center gap-3 mb-3">
-              <div className="bg-black/5 p-2 rounded-lg text-black">
-                <Mail size={18} />
-              </div>
-              <span className="text-[17px] font-bold">Поддержка</span>
-           </div>
-           <p className="text-[14px] text-[#8E8E93] leading-snug font-medium mb-4">
-             Есть вопросы? Напишите нам в Telegram, мы поможем настроить ваш салон.
-           </p>
-           <button className="text-[#007AFF] text-[15px] font-bold active:opacity-50">
-             Связаться с разработчиком →
-           </button>
         </div>
       </div>
     </div>
