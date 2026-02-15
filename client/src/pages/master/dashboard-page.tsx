@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { format, addMonths, subMonths, isToday, isValid, isSameDay, addMinutes } from "date-fns";
+import { format, addMonths, subMonths, isToday, isSameDay, addMinutes } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
   ChevronDown,
@@ -14,18 +14,22 @@ import {
   User,
   Clock,
   Calendar as CalendarIcon,
-  Copy
+  Copy,
+  Loader2
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
 
+// 👇 URL ТВОЕГО БЕКЕНДА
+const BACKEND_URL = "https://grooming-tma.onrender.com";
+
 type Appointment = {
   id: string;
   client_name: string;
   client_phone: string;
-  client_tg_user?: string | any; // Может быть JSON строкой или объектом
+  client_tg_user?: string | any;
   pet_name: string;
   pet_breed: string;
   start_time: string;
@@ -50,7 +54,9 @@ export function MasterDashboardPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Стейт для модалки
   const [isAdding, setIsAdding] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // Лоадер при отправке
   const [newApp, setNewApp] = useState({
     client_name: "", client_phone: "", pet_name: "", pet_breed: "", service_id: "",
     date: format(new Date(), "yyyy-MM-dd"), time: format(new Date(), "HH:mm")
@@ -58,38 +64,114 @@ export function MasterDashboardPage() {
 
   const salonId = localStorage.getItem("salon_id");
 
+  // Чтение данных (SELECT) оставляем через Supabase (Это быстро и удобно)
   const fetchAppointments = async () => {
     if (!salonId) return;
     setLoading(true);
-    const { data, error } = await supabase.from('appointments').select(`*, services (title, price, duration_minutes)`).eq('salon_id', salonId);
+    const { data, error } = await supabase.from('appointments')
+      .select(`*, services (title, price, duration_minutes)`)
+      .eq('salon_id', salonId);
+
     if (!error) setAppointments(data || []);
     setLoading(false);
   };
 
   const fetchServices = async () => {
     if (!salonId) return;
-    const { data } = await supabase.from('services').select('id, title, price, duration_minutes').eq('salon_id', salonId);
+    const { data } = await supabase.from('services')
+      .select('id, title, price, duration_minutes')
+      .eq('salon_id', salonId);
     if (data) setServices(data);
   };
 
   useEffect(() => { fetchAppointments(); fetchServices(); }, [salonId]);
 
+  // ✅ ИСПРАВЛЕНО: Ручная запись теперь идет через Python API
   const handleManualAdd = async () => {
-    if (!newApp.client_name || !newApp.service_id || !newApp.client_phone) { toast.error("Заполните поля"); return; }
+    if (!newApp.client_name || !newApp.service_id || !newApp.client_phone) {
+      toast.error("Заполните имя, телефон и услугу");
+      return;
+    }
+
     const selectedS = services.find(s => s.id === newApp.service_id);
-    const duration = selectedS?.duration_minutes || 30;
-    const startDate = new Date(`${newApp.date}T${newApp.time}:00`);
-    const start_time = startDate.toISOString();
-    const end_time = addMinutes(startDate, duration).toISOString();
+    if (!selectedS || !salonId) return;
 
-    const { error } = await supabase.from('appointments').insert([{
-      salon_id: salonId, client_name: newApp.client_name, client_phone: newApp.client_phone,
-      pet_name: newApp.pet_name, pet_breed: newApp.pet_breed, service_id: newApp.service_id,
-      start_time, end_time, status: 'confirmed'
-    }]);
+    setIsSubmitting(true);
 
-    if (!error) { toast.success("Записано!"); setIsAdding(false); fetchAppointments(); }
+    try {
+      // Формируем такой же JSON, как отправляет клиент
+      const payload = {
+        salonId: salonId,
+        service: {
+          id: selectedS.id,
+          title: selectedS.title,
+          duration_minutes: selectedS.duration_minutes
+        },
+        date: newApp.date,
+        time: newApp.time,
+        client: {
+          name: newApp.client_name,
+          phone: newApp.client_phone,
+          telegram_user: null // При ручной записи телеграма нет
+        },
+        pet: {
+          name: newApp.pet_name,
+          petBreed: newApp.pet_breed
+        }
+      };
+
+      const response = await fetch(`${BACKEND_URL}/api/book`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.status === 409) {
+        toast.error("Это время уже занято! ⚠️");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success("Клиент успешно записан!");
+        setIsAdding(false);
+        // Сбрасываем форму
+        setNewApp(prev => ({ ...prev, client_name: "", client_phone: "", pet_name: "", pet_breed: "" }));
+        fetchAppointments(); // Обновляем список
+      } else {
+        toast.error("Ошибка сервера: " + result.detail);
+      }
+
+    } catch (e) {
+      toast.error("Не удалось создать запись");
+      console.error(e);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  // ✅ ИСПРАВЛЕНО: Смена статуса теперь идет через Python API
+  const updateStatus = async (id: string, newStatus: Appointment['status']) => {
+    const toastId = toast.loading("Обновление...");
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/appointments/${id}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        });
+
+        if (!response.ok) throw new Error("Ошибка обновления");
+
+        toast.success("Статус обновлен", { id: toastId });
+        fetchAppointments();
+    } catch (e) {
+        toast.error("Не удалось обновить статус", { id: toastId });
+    }
+  };
+
+  // --- Рендер (без изменений логики отображения) ---
 
   const filteredApps = appointments
     .filter(app => filter === 'pending' ? app.status === 'pending' : ['confirmed', 'completed', 'canceled'].includes(app.status))
@@ -102,11 +184,6 @@ export function MasterDashboardPage() {
   const calendarPendingApps = appointments.filter(app =>
     isSameDay(new Date(app.start_time), selectedDate) && app.status === 'pending'
   );
-
-  const updateStatus = async (id: string, newStatus: Appointment['status']) => {
-    const { error } = await supabase.from('appointments').update({ status: newStatus }).eq('id', id);
-    if (!error) fetchAppointments();
-  };
 
   const renderCalendar = () => {
     const year = currentMonth.getFullYear();
@@ -200,7 +277,7 @@ export function MasterDashboardPage() {
       {isAdding && (
         <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-[2px] flex items-end justify-center p-0">
           <div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[24px] pb-10 overflow-hidden animate-in slide-in-from-bottom duration-300 shadow-2xl h-[92vh] flex flex-col">
-            <div className="px-5 py-4 flex justify-between items-center border-b border-slate-200 bg-white/80 sticky top-0 z-10"><button onClick={() => setIsAdding(false)} className="text-[17px] text-[#007AFF]">Отмена</button><h2 className="text-[17px] font-bold">Новая запись</h2><button onClick={handleManualAdd} className="text-[17px] font-bold text-[#007AFF]">Готово</button></div>
+            <div className="px-5 py-4 flex justify-between items-center border-b border-slate-200 bg-white/80 sticky top-0 z-10"><button onClick={() => setIsAdding(false)} className="text-[17px] text-[#007AFF]">Отмена</button><h2 className="text-[17px] font-bold">Новая запись</h2><button onClick={handleManualAdd} disabled={isSubmitting} className="text-[17px] font-bold text-[#007AFF]">{isSubmitting ? <Loader2 className="animate-spin"/> : "Готово"}</button></div>
             <div className="px-5 mt-6 space-y-5 flex-1 overflow-y-auto pb-10">
               <div className="space-y-1.5"><label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1"><User size={14} className="inline mr-1"/> Владелец</label><div className="bg-white rounded-[12px] p-1 border border-slate-100 shadow-sm"><input placeholder="Имя клиента" className="w-full px-4 py-3 bg-transparent text-[17px] outline-none" value={newApp.client_name} onChange={e => setNewApp({...newApp, client_name: e.target.value})} /></div><div className="bg-white rounded-[12px] p-3.5 border border-slate-100 shadow-sm"><PhoneInput value={newApp.client_phone} onChange={val => setNewApp({...newApp, client_phone: val})} className="border-none shadow-none h-auto p-0 text-[17px]"/></div></div>
               <div className="space-y-1.5"><label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1"><PawPrint size={14} className="inline mr-1"/> Питомец</label><div className="grid grid-cols-2 gap-3"><div className="bg-white rounded-[12px] p-1 border border-slate-100 shadow-sm"><input placeholder="Кличка" className="w-full px-4 py-3 bg-transparent text-[17px] outline-none" value={newApp.pet_name} onChange={e => setNewApp({...newApp, pet_name: e.target.value})} /></div><div className="bg-white rounded-[12px] p-1 border border-slate-100 shadow-sm"><input placeholder="Порода" className="w-full px-4 py-3 bg-transparent text-[17px] outline-none" value={newApp.pet_breed} onChange={e => setNewApp({...newApp, pet_breed: e.target.value})} /></div></div></div>
@@ -229,7 +306,6 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
     console.error("Failed to parse tg user", e);
   }
 
-  // Очистка номера
   const cleanPhone = app.client_phone.replace(/[^0-9+]/g, '');
 
   const chatLink = tgUsername
@@ -271,13 +347,11 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
               <p className="text-[13px] text-[#8E8E93] pt-1 font-medium">Владелец: {app.client_name}</p>
 
               <div className="flex items-center gap-2 mt-3">
-                {/* 👇 НОВАЯ КНОПКА: СКОПИРОВАТЬ НОМЕР */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     navigator.clipboard.writeText(app.client_phone);
                     toast.success("Номер скопирован");
-                    // Пробуем открыть звонилку после копирования
                     window.location.href = `tel:${cleanPhone}`;
                   }}
                   className="flex-1 flex items-center justify-center gap-2 bg-[#F2F2F7] text-black py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all"
@@ -285,7 +359,6 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
                   <Copy size={14} /> {app.client_phone}
                 </button>
 
-                {/* Кнопка мессенджера */}
                 <a
                   href={chatLink}
                   target="_blank"

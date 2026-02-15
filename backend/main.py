@@ -1,9 +1,11 @@
 import os
 import threading
 import logging
-import json # 👈 Добавил импорт json
+import json
+import time
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any # 👈 Добавил типы
+from typing import Optional, Dict, Any
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,10 +29,32 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not all([SUPABASE_URL, SUPABASE_KEY, TELEGRAM_BOT_TOKEN]):
     logger.critical("⚠️ ОШИБКА: Не заданы переменные окружения!")
 
-# Клиенты
+# Инициализация клиентов
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-app = FastAPI(title="Grooming API", version="2.0")
+
+
+# --- 3. Управление жизненным циклом (Lifespan) ---
+# Решает проблему конфликтов ботов (Error 409)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ЗАПУСК
+    if os.environ.get("RUN_BOT") != "false":
+        logger.info("🚀 Запуск сервера и Telegram бота...")
+        bot_thread = threading.Thread(target=start_bot_polling, daemon=True)
+        bot_thread.start()
+
+    yield
+
+    # ОСТАНОВКА
+    logger.info("🛑 Остановка сервера...")
+    try:
+        bot.stop_polling()
+    except Exception:
+        pass
+
+
+app = FastAPI(title="Grooming API", version="2.2", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,20 +63,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 3. Модели данных ---
+
+# --- 4. Модели данных ---
 class ClientInfo(BaseModel):
     name: str
     phone: str
-    telegram_user: Optional[Dict[str, Any]] = None # 👈 ВАЖНО: Разрешаем прием объекта telegram_user
+    telegram_user: Optional[Dict[str, Any]] = None
+
 
 class PetInfo(BaseModel):
     name: str
     petBreed: Optional[str] = ""
 
+
 class ServiceInfo(BaseModel):
     id: str
     title: str
     duration_minutes: int
+
 
 class BookingRequest(BaseModel):
     salonId: str
@@ -62,8 +90,27 @@ class BookingRequest(BaseModel):
     client: ClientInfo
     pet: PetInfo
 
-# --- 4. Бизнес-логика ---
+
+# 👇 Модель для обновления статуса
+class StatusUpdate(BaseModel):
+    status: str
+
+
+# --- 5. Вспомогательные функции ---
+
+def start_bot_polling():
+    """Запуск бота с защитой от падений"""
+    try:
+        bot.remove_webhook()
+        time.sleep(1)
+        logger.info("🤖 Бот начал прослушивание...")
+        bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    except Exception as e:
+        logger.error(f"Бот упал с ошибкой: {e}")
+
+
 def check_overlap(salon_id: str, start_time: datetime, end_time: datetime) -> bool:
+    """Проверка занятости слота"""
     try:
         response = supabase.table("appointments") \
             .select("id") \
@@ -75,9 +122,11 @@ def check_overlap(salon_id: str, start_time: datetime, end_time: datetime) -> bo
         return len(response.data) > 0
     except Exception as e:
         logger.error(f"Ошибка проверки слотов: {e}")
-        return True
+        return True  # Безопасный отказ
+
 
 def send_telegram_notification_task(salon_id: str, booking_data: BookingRequest, start_dt: datetime):
+    """Отправка уведомления мастеру"""
     try:
         res = supabase.table("salons").select("telegram_chat_id, name").eq("id", salon_id).single().execute()
 
@@ -88,33 +137,39 @@ def send_telegram_notification_task(salon_id: str, booking_data: BookingRequest,
         salon_name = res.data.get("name")
 
         if master_chat_id:
+            pet_info = f"{booking_data.pet.name}"
+            if booking_data.pet.petBreed:
+                pet_info += f" ({booking_data.pet.petBreed})"
+
             msg = (
-                f"🔔 *Новая запись в {salon_name}!*\n\n"
-                f"👤 *Клиент:* {booking_data.client.name}\n"
-                f"📞 *Тел:* `{booking_data.client.phone}`\n"
-                f"🐶 *Питомец:* {booking_data.pet.name} {f'({booking_data.pet.petBreed})' if booking_data.pet.petBreed else ''}\n"
-                f"✂️ *Услуга:* {booking_data.service.title}\n"
-                f"📅 *Дата:* {start_dt.strftime('%d.%m.%Y')}\n"
-                f"⏰ *Время:* {start_dt.strftime('%H:%M')}\n\n"
-                f"_Зайдите в приложение, чтобы подтвердить._"
+                f"🔔 <b>Новая запись в {salon_name}!</b>\n\n"
+                f"👤 <b>Клиент:</b> {booking_data.client.name}\n"
+                f"📞 <b>Тел:</b> {booking_data.client.phone}\n"
+                f"🐶 <b>Питомец:</b> {pet_info}\n"
+                f"✂️ <b>Услуга:</b> {booking_data.service.title}\n"
+                f"📅 <b>Дата:</b> {start_dt.strftime('%d.%m.%Y')}\n"
+                f"⏰ <b>Время:</b> {start_dt.strftime('%H:%M')}\n\n"
+                f"<i>Зайдите в приложение, чтобы подтвердить.</i>"
             )
 
-            # 👇 ИСПРАВЛЕННАЯ КНОПКА: Ссылка на T.ME
+            # Кнопка на Mini App
             markup = types.InlineKeyboardMarkup()
-            # Это откроет Mini App внутри Telegram
-            btn = types.InlineKeyboardButton("Открыть админку", url="https://t.me/pet_groom_bot/app")
-            markup.add(btn)
+            web_app_info = types.WebAppInfo(url="https://t.me/pet_groom_bot/app")
+            markup.add(types.InlineKeyboardButton("Открыть админку", web_app=web_app_info))
 
-            bot.send_message(master_chat_id, msg, parse_mode="Markdown", reply_markup=markup)
+            bot.send_message(master_chat_id, msg, parse_mode="HTML", reply_markup=markup)
             logger.info(f"Уведомление отправлено: {master_chat_id}")
 
     except Exception as e:
         logger.error(f"Ошибка отправки Telegram уведомления: {e}")
 
-# --- 5. API Endpoints ---
+
+# --- 6. API Endpoints ---
+
 @app.get("/")
 def health_check():
-    return {"status": "active", "service": "Grooming Backend"}
+    return {"status": "active", "service": "Grooming Backend v2.2"}
+
 
 @app.get("/api/user-status/{tg_id}")
 async def check_user_status(tg_id: int):
@@ -126,6 +181,7 @@ async def check_user_status(tg_id: int):
     except Exception as e:
         logger.error(f"Error checking user status: {e}")
         return {"isMaster": False}
+
 
 @app.post("/api/book")
 async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks):
@@ -140,10 +196,11 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
         duration = data.service.duration_minutes or 30
         end_dt = start_dt + timedelta(minutes=duration)
 
+        # 1. Проверка занятости
         if check_overlap(data.salonId, start_dt, end_dt):
             raise HTTPException(status_code=409, detail="Это время уже занято")
 
-        # 👇 ПОДГОТОВКА JSON ДЛЯ ТЕЛЕГРАМА
+        # 2. Подготовка данных
         client_tg_json = None
         if data.client.telegram_user:
             client_tg_json = json.dumps(data.client.telegram_user)
@@ -153,7 +210,7 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
             "service_id": data.service.id,
             "client_name": data.client.name,
             "client_phone": data.client.phone,
-            "client_tg_user": client_tg_json, # ✅ СОХРАНЯЕМ В БАЗУ
+            "client_tg_user": client_tg_json,
             "pet_name": data.pet.name,
             "pet_breed": data.pet.petBreed,
             "start_time": start_dt.isoformat(),
@@ -161,11 +218,13 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
             "status": "pending"
         }
 
+        # 3. Запись в БД
         res = supabase.table("appointments").insert(insert_payload).execute()
 
         if not res.data:
             raise HTTPException(status_code=500, detail="Ошибка базы данных")
 
+        # 4. Уведомление
         background_tasks.add_task(send_telegram_notification_task, data.salonId, data, start_dt)
 
         return {"success": True, "id": res.data[0]['id']}
@@ -176,7 +235,24 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
         logger.error(f"Critical Error: {e}")
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
-# --- 6. Логика Бота ---
+
+# 👇 НОВЫЙ ЭНДПОИНТ: Обновление статуса
+@app.patch("/api/appointments/{appointment_id}/status")
+async def update_appointment_status(appointment_id: str, payload: StatusUpdate):
+    try:
+        # Обновляем статус через сервисный ключ (обходит RLS)
+        res = supabase.table("appointments").update({"status": payload.status}).eq("id", appointment_id).execute()
+
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Запись не найдена")
+
+        return {"success": True, "data": res.data[0]}
+    except Exception as e:
+        logger.error(f"Error updating status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- 7. Бот команды ---
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     chat_id = message.chat.id
@@ -187,18 +263,9 @@ def handle_start(message):
     )
     bot.reply_to(message, text, parse_mode="Markdown")
 
-def start_bot_polling():
-    try:
-        bot.remove_webhook()
-        logger.info("🤖 Бот запущен...")
-        bot.infinity_polling()
-    except Exception as e:
-        logger.error(f"Бот упал: {e}")
-
-if os.environ.get("RUN_BOT") != "false":
-    threading.Thread(target=start_bot_polling, daemon=True).start()
 
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
