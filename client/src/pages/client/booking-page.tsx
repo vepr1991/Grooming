@@ -95,16 +95,22 @@ export function ClientBookingPage() {
       if (!salonId || !selectedDate) return;
       setSlotsLoading(true);
 
-      const start = new Date(selectedDate); start.setHours(0,0,0,0);
-      const end = new Date(selectedDate); end.setHours(23,59,59,999);
+      // Берем ВЕСЬ день в UTC, чтобы точно захватить все записи
+      // startOfDay в локальном времени -> toISOString (UTC)
+      const start = new Date(selectedDate);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(selectedDate);
+      end.setHours(23, 59, 59, 999);
 
       const { data } = await supabase
         .from('appointments')
         .select('start_time, end_time')
         .eq('salon_id', salonId)
         .neq('status', 'canceled')
-        .gte('start_time', start.toISOString())
-        .lte('start_time', end.toISOString());
+        // Используем фильтры Supabase для перекрытия диапазона
+        .lte('start_time', end.toISOString())
+        .gte('end_time', start.toISOString());
 
       setExistingAppointments(data || []);
       setSlotsLoading(false);
@@ -115,28 +121,49 @@ export function ClientBookingPage() {
   // Генерация доступных окон (слотов)
   const getSlots = () => {
     if (!salon || !salon.schedule) return [];
+
+    // Получаем день недели
     const dayName = format(selectedDate, 'eeeeee', { locale: ru }).toLowerCase();
     const dayConfig = salon.schedule.find(d => d.day.toLowerCase() === dayName);
 
     if (!dayConfig || !dayConfig.isWorking) return [];
 
     const slots: string[] = [];
-    let current = parse(dayConfig.hours.start, 'HH:mm', selectedDate);
-    const end = parse(dayConfig.hours.end, 'HH:mm', selectedDate);
 
-    while (isBefore(current, end)) {
+    // Парсим время начала и конца рабочего дня
+    let current = parse(dayConfig.hours.start, 'HH:mm', selectedDate);
+    const endWorkDay = parse(dayConfig.hours.end, 'HH:mm', selectedDate);
+
+    while (isBefore(current, endWorkDay)) {
       const timeStr = format(current, 'HH:mm');
 
+      // Длительность услуги (по умолчанию 30 мин)
+      const duration = selectedService?.duration_minutes || 30;
+
+      // Рассчитываем время начала и конца ПОТЕНЦИАЛЬНОГО слота
+      const slotStart = new Date(current);
+      const slotEnd = addMinutes(slotStart, duration);
+
+      // Проверяем пересечение с существующими записями
       const isBusy = existingAppointments.some(app => {
+        // Преобразуем строки из базы в объекты Date
         const appStart = new Date(app.start_time);
         const appEnd = new Date(app.end_time);
-        const slotTime = new Date(current);
-        return slotTime >= appStart && slotTime < appEnd;
+
+        // Формула пересечения отрезков: (StartA < EndB) && (EndA > StartB)
+        // Если слот начинается раньше, чем заканчивается запись, И слот заканчивается позже, чем начинается запись
+        // Добавляем небольшой буфер (1 мс), чтобы стык в стык не считалось занятым
+        return slotStart < appEnd && slotEnd > appStart;
       });
 
+      // Проверка на прошедшее время (если выбран сегодня)
       const isPast = isSameDay(selectedDate, new Date()) && isBefore(current, new Date());
 
-      if (!isBusy && !isPast) slots.push(timeStr);
+      if (!isBusy && !isPast) {
+        slots.push(timeStr);
+      }
+
+      // Шаг сетки (по умолчанию 30 мин)
       current = addMinutes(current, salon.slot_step || 30);
     }
     return slots;

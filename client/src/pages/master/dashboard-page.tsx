@@ -231,7 +231,8 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
     console.error("Failed to parse tg user", e);
   }
 
-  const cleanPhone = app.client_phone.replace(/\D/g, '');
+  // Очистка телефона для ссылки tel:
+  const cleanPhone = app.client_phone.replace(/[^0-9+]/g, '');
 
   // Если есть никнейм - ссылка на него, иначе fallback на WhatsApp
   const chatLink = tgUsername
@@ -272,10 +273,24 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
               <div className="bg-[#F2F2F7] rounded-xl p-2.5"><p className="text-[13px] font-semibold text-black truncate">{sInfo?.title}</p><p className="text-[11px] text-[#8E8E93]">{sInfo?.duration_minutes || '30'} мин • {sInfo?.price || '0'} ₸</p></div>
               <p className="text-[13px] text-[#8E8E93] pt-1 font-medium">Владелец: {app.client_name}</p>
               <div className="flex items-center gap-2 mt-3">
-                <a href={`tel:${app.client_phone}`} className="flex-1 flex items-center justify-center gap-2 bg-[#E8F2FF] text-[#007AFF] py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all"><Phone size={14} /> Вызов</a>
 
-                {/* 👇 УМНАЯ КНОПКА: Telegram или WhatsApp */}
-                <a href={chatLink} target="_blank" rel="noopener noreferrer" className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all ${isTelegram ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}>
+                {/* 👇 КНОПКА ВЫЗОВА: С защитой от всплытия клика и очищенным номером */}
+                <a
+                  href={`tel:${cleanPhone}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex-1 flex items-center justify-center gap-2 bg-[#E8F2FF] text-[#007AFF] py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all"
+                >
+                  <Phone size={14} /> Вызов
+                </a>
+
+                {/* 👇 КНОПКА МЕССЕНДЖЕРА: С защитой от всплытия клика */}
+                <a
+                  href={chatLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-[13px] font-bold active:scale-95 transition-all ${isTelegram ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}
+                >
                   {isTelegram ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg> : <MessageSquare size={14} />}
                   {isTelegram ? 'Telegram' : 'WhatsApp'}
                 </a>
