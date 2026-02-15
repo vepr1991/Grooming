@@ -1,18 +1,20 @@
-# Используем Python
+# backend/Dockerfile
+
 FROM python:3.10-slim
 
-# Рабочая папка внутри контейнера
 WORKDIR /app
 
-# Копируем requirements.txt (он лежит рядом с Dockerfile)
+# Копируем requirements.txt
 COPY requirements.txt .
+
+# Устанавливаем зависимости
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем весь код из папки backend внутрь контейнера
+# Копируем код приложения
 COPY . .
 
-# Переменная порта (Render подставит своё значение, но 8000 для локальных тестов)
-ENV PORT=8000
+# Render передает порт через переменную, используем её
+ENV PORT=10000
 
-# Команда запуска (main.py лежит прямо в корне WORKDIR)
-CMD uvicorn main:app --host 0.0.0.0 --port $PORT
+# Запускаем uvicorn
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port $PORT"]

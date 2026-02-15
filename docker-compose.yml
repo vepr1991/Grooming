@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app  # Чтобы код обновлялся без перезагрузки контейнера (Hot Reload)
+    environment:
+      - PORT=8000
+    # Создай файл .env внутри папки backend для локальных тестов
+    env_file:
+      - ./backend/.env
