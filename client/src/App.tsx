@@ -75,19 +75,30 @@ function App() {
 
       <AuthCheck>
         <Routes>
-          {/* ИСПРАВЛЕНИЕ: Вместо пустого div теперь всегда показываем выбор роли */}
+          {/* Главная страница - Выбор роли */}
           <Route path="/" element={<SelectRolePage />} />
 
           <Route path="/select-role" element={<SelectRolePage />} />
+
+          {/* Регистрация мастера */}
           <Route path="/master/register" element={<MasterRegisterPage />} />
+
+          {/* Панель мастера */}
           <Route path="/master" element={<MasterLayout />}>
+            {/* 👇 ВАЖНО: Этот роут открывает дашборд по умолчанию при входе в /master */}
+            <Route index element={<MasterDashboardPage />} />
+
             <Route path="dashboard" element={<MasterDashboardPage />} />
             <Route path="services" element={<MasterServicesPage />} />
             <Route path="profile" element={<MasterProfilePage />} />
           </Route>
+
+          {/* Запись клиента */}
           <Route path="/client/:salonId" element={<ClientLayout />}>
             <Route index element={<ClientBookingPage />} />
           </Route>
+
+          {/* 404 Страница */}
           <Route path="*" element={<div className="p-10 text-center text-[#8E8E93]">404: Страница не найдена</div>} />
         </Routes>
       </AuthCheck>
