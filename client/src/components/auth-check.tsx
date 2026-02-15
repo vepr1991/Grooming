@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Loader2, RefreshCw } from "lucide-react"; // Добавил иконку обновления
 
 // Твой URL бекенда
-const BACKEND_URL = "https://grooming-backend-up4v.onrender.com";
+const BACKEND_URL = "https://grooming-tma.onrender.com";
 
 export function AuthCheck({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
