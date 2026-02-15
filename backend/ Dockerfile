@@ -1,16 +1,18 @@
+# Используем Python
 FROM python:3.10-slim
 
+# Рабочая папка внутри контейнера
 WORKDIR /app
 
-# Копируем зависимости
-COPY backend/requirements.txt .
+# Копируем requirements.txt (он лежит рядом с Dockerfile)
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем всё содержимое проекта
+# Копируем весь код из папки backend внутрь контейнера
 COPY . .
 
-# Переменная порта для Render
+# Переменная порта (Render подставит своё значение, но 8000 для локальных тестов)
 ENV PORT=8000
 
-# Запускаем приложение
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port $PORT"]
+# Команда запуска (main.py лежит прямо в корне WORKDIR)
+CMD uvicorn main:app --host 0.0.0.0 --port $PORT
