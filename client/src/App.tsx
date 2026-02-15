@@ -17,13 +17,10 @@ function SelectRolePage() {
   const navigate = useNavigate();
 
   const handleClientClick = () => {
-    // Проверяем, был ли пользователь уже в каком-то салоне
     const lastSalon = localStorage.getItem('last_visited_salon');
-
     if (lastSalon) {
       navigate(`/client/${lastSalon}`);
     } else {
-      // Если истории нет, показываем инструкцию
       toast.info("Чтобы записаться, перейдите по ссылке, которую вам отправил мастер.", {
         duration: 4000,
         position: 'bottom-center'
@@ -78,26 +75,19 @@ function App() {
 
       <AuthCheck>
         <Routes>
-          {/* Пустой элемент, так как AuthCheck сам сделает редирект */}
-          <Route path="/" element={<div />} />
+          {/* ИСПРАВЛЕНИЕ: Вместо пустого div теперь всегда показываем выбор роли */}
+          <Route path="/" element={<SelectRolePage />} />
 
           <Route path="/select-role" element={<SelectRolePage />} />
-
-          {/* Регистрация мастера */}
           <Route path="/master/register" element={<MasterRegisterPage />} />
-
-          {/* Панель мастера */}
           <Route path="/master" element={<MasterLayout />}>
             <Route path="dashboard" element={<MasterDashboardPage />} />
             <Route path="services" element={<MasterServicesPage />} />
             <Route path="profile" element={<MasterProfilePage />} />
           </Route>
-
-          {/* Запись клиента */}
           <Route path="/client/:salonId" element={<ClientLayout />}>
             <Route index element={<ClientBookingPage />} />
           </Route>
-
           <Route path="*" element={<div className="p-10 text-center text-[#8E8E93]">404: Страница не найдена</div>} />
         </Routes>
       </AuthCheck>
