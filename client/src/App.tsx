@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { AuthCheck } from "@/components/auth-check";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";

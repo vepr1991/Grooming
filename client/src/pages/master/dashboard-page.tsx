@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { format, addMonths, subMonths, isToday, isValid, isSameDay } from "date-fns";
+import { useEffect, useState } from "react";
+import { format, addMonths, subMonths, isToday, isValid, isSameDay, addMinutes } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
   ChevronDown,
@@ -24,7 +24,7 @@ type Appointment = {
   id: string;
   client_name: string;
   client_phone: string;
-  client_tg_user?: string; // Никнейм из базы
+  client_tg_user?: string;
   pet_name: string;
   pet_breed: string;
   start_time: string;
@@ -79,6 +79,7 @@ export function MasterDashboardPage() {
     const duration = selectedS?.duration_minutes || 30;
     const startDate = new Date(`${newApp.date}T${newApp.time}:00`);
     const start_time = startDate.toISOString();
+    // ИСПРАВЛЕНИЕ: addMinutes теперь импортирован
     const end_time = addMinutes(startDate, duration).toISOString();
 
     const { error } = await supabase.from('appointments').insert([{
@@ -95,12 +96,61 @@ export function MasterDashboardPage() {
     .sort((a, b) => {
       const tA = new Date(a.start_time).getTime();
       const tB = new Date(b.start_time).getTime();
-      return filter === 'pending' ? tA - tB : tB - tA; // Ожидают: ASC, История: DESC
+      return filter === 'pending' ? tA - tB : tB - tA;
     });
+
+  const calendarPendingApps = appointments.filter(app =>
+    isSameDay(new Date(app.start_time), selectedDate) && app.status === 'pending'
+  );
 
   const updateStatus = async (id: string, newStatus: Appointment['status']) => {
     const { error } = await supabase.from('appointments').update({ status: newStatus }).eq('id', id);
     if (!error) fetchAppointments();
+  };
+
+  const renderCalendar = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const offset = firstDay === 0 ? 6 : firstDay - 1;
+    const days = [];
+
+    for (let i = 0; i < offset; i++) days.push(<div key={`prev-${i}`} className="h-12"></div>);
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateObj = new Date(year, month, d);
+      const isSel = isSameDay(dateObj, selectedDate);
+      const hasPending = appointments.some(a => isSameDay(new Date(a.start_time), dateObj) && a.status === 'pending');
+      const isCurrToday = isToday(dateObj);
+
+      days.push(
+        <div key={d} className="relative flex items-center justify-center h-12 cursor-pointer" onClick={() => setSelectedDate(dateObj)}>
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
+            isSel ? 'bg-[#007AFF] text-white' : isCurrToday ? 'text-[#007AFF] bg-[#007AFF]/10' : 'text-black'
+          }`}>
+            {d}
+          </div>
+          {hasPending && !isSel && <div className="absolute bottom-1 w-1.5 h-1.5 bg-orange-500 rounded-full"></div>}
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white rounded-[16px] p-2 shadow-sm border border-slate-100 mx-5 mt-2">
+        <div className="flex justify-between items-center px-4 py-2">
+          <span className="font-bold text-lg capitalize">{format(currentMonth, 'LLLL yyyy', { locale: ru })}</span>
+          <div className="flex gap-2">
+            <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 text-[#007AFF]"><ChevronLeft size={22}/></button>
+            <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 text-[#007AFF]"><ChevronRight size={22}/></button>
+          </div>
+        </div>
+        <div className="grid grid-cols-7 text-center py-2">
+          {['П', 'В', 'С', 'Ч', 'П', 'С', 'В'].map(d => <span key={d} className="text-[11px] font-bold text-[#8E8E93]">{d}</span>)}
+        </div>
+        <div className="grid grid-cols-7 gap-y-1 pb-2">{days}</div>
+      </div>
+    );
   };
 
   return (
@@ -126,9 +176,25 @@ export function MasterDashboardPage() {
         )}
       </div>
 
-      <div className="px-5 space-y-3">
-        {loading ? <div className="text-center py-20 text-[#8E8E93]">Загрузка...</div> : filteredApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} />)}
-      </div>
+      {view === 'agenda' ? (
+        <div className="px-5 space-y-3">
+          {loading ? <div className="text-center py-20 text-[#8E8E93]">Загрузка...</div> : filteredApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} />)}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {renderCalendar()}
+          <div className="px-5 pt-2">
+            <h2 className="text-[13px] font-bold text-[#8E8E93] uppercase mb-3 px-1">Ожидают на {format(selectedDate, 'd MMMM', { locale: ru })}</h2>
+            <div className="space-y-3">
+              {calendarPendingApps.length === 0 ? (
+                <div className="bg-white/50 rounded-[16px] p-8 text-center text-[#8E8E93] text-[15px] border border-dashed">На этот день новых записей нет</div>
+              ) : (
+                calendarPendingApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} />)
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {isAdding && (
         <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-[2px] flex items-end justify-center p-0">

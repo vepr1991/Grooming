@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { format, addDays, isSameDay, isBefore, parse, addMinutes, startOfToday } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -6,13 +6,9 @@ import {
   ChevronLeft,
   MapPin,
   Clock,
-  Calendar as CalendarIcon,
-  Scissors,
   CheckCircle2,
   CalendarPlus,
   Loader2,
-  User,
-  PawPrint
 } from "lucide-react";
 import { toast } from "sonner";
 
