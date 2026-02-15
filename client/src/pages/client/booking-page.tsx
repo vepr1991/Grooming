@@ -1,19 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { format, addDays, isSameDay, isBefore, parse, addMinutes, startOfToday, isValid } from "date-fns";
+import { format, addDays, isSameDay, isBefore, parse, addMinutes, startOfToday } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
   ChevronLeft,
   MapPin,
-  Phone,
   Clock,
   Calendar as CalendarIcon,
   Scissors,
   CheckCircle2,
   CalendarPlus,
   Loader2,
-  ChevronRight,
-  MessageSquare,
   User,
   PawPrint
 } from "lucide-react";
@@ -22,6 +19,7 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
 
+// --- Types ---
 type Step = 'showcase' | 'datetime' | 'details' | 'success';
 
 type Salon = {
@@ -42,6 +40,9 @@ type Service = {
   image_url: string;
 };
 
+// ЗАМЕНИ НА СВОЙ URL ПОСЛЕ ДЕПЛОЯ НА RENDER
+const BACKEND_URL = "https://your-backend-on-render.com";
+
 export function ClientBookingPage() {
   const { salonId } = useParams();
   const [step, setStep] = useState<Step>('showcase');
@@ -51,6 +52,7 @@ export function ClientBookingPage() {
   const [loading, setLoading] = useState(true);
   const [slotsLoading, setSlotsLoading] = useState(false);
 
+  // Booking State
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
@@ -62,32 +64,41 @@ export function ClientBookingPage() {
     agreed: false
   });
 
+  // 1. Загрузка данных салона и инфы из Telegram
   useEffect(() => {
     async function loadInitialData() {
       if (!salonId) return;
-      const [sRes, svRes] = await Promise.all([
-        supabase.from('salons').select('*').eq('id', salonId).single(),
-        supabase.from('services').select('*').eq('salon_id', salonId)
-      ]);
+      setLoading(true);
+      try {
+        const [sRes, svRes] = await Promise.all([
+          supabase.from('salons').select('*').eq('id', salonId).single(),
+          supabase.from('services').select('*').eq('salon_id', salonId)
+        ]);
 
-      if (sRes.data) setSalon(sRes.data);
-      if (svRes.data) setServices(svRes.data);
+        if (sRes.data) setSalon(sRes.data);
+        if (svRes.data) setServices(svRes.data);
 
-      // @ts-ignore
-      const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-      if (tgUser) {
-        setFormData(prev => ({ ...prev, name: tgUser.first_name || '' }));
+        // Пытаемся взять данные из Telegram Mini App
+        // @ts-ignore
+        const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+        if (tgUser) {
+          setFormData(prev => ({ ...prev, name: tgUser.first_name || '' }));
+        }
+      } catch (e) {
+        toast.error("Ошибка загрузки данных");
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     }
     loadInitialData();
   }, [salonId]);
 
+  // 2. Получаем занятые слоты из базы при смене даты
   useEffect(() => {
     async function fetchBusySlots() {
       if (!salonId || !selectedDate) return;
       setSlotsLoading(true);
+
       const start = new Date(selectedDate); start.setHours(0,0,0,0);
       const end = new Date(selectedDate); end.setHours(23,59,59,999);
 
@@ -105,10 +116,12 @@ export function ClientBookingPage() {
     fetchBusySlots();
   }, [selectedDate, salonId]);
 
+  // Генерация доступных окон (слотов)
   const getSlots = () => {
     if (!salon || !salon.schedule) return [];
     const dayName = format(selectedDate, 'eeeeee', { locale: ru }).toLowerCase();
     const dayConfig = salon.schedule.find(d => d.day.toLowerCase() === dayName);
+
     if (!dayConfig || !dayConfig.isWorking) return [];
 
     const slots = [];
@@ -117,21 +130,26 @@ export function ClientBookingPage() {
 
     while (isBefore(current, end)) {
       const timeStr = format(current, 'HH:mm');
+
       const isBusy = existingAppointments.some(app => {
         const appStart = new Date(app.start_time);
         const appEnd = new Date(app.end_time);
         const slotTime = new Date(current);
         return slotTime >= appStart && slotTime < appEnd;
       });
+
       const isPast = isSameDay(selectedDate, new Date()) && isBefore(current, new Date());
+
       if (!isBusy && !isPast) slots.push(timeStr);
       current = addMinutes(current, salon.slot_step || 30);
     }
     return slots;
   };
 
+  // Функция создания .ics файла для календаря
   const handleCalendarDownload = () => {
     if (!selectedService || !selectedTime || !salon) return;
+
     const startDate = new Date(`${format(selectedDate, 'yyyy-MM-dd')}T${selectedTime}:00`);
     const endDate = addMinutes(startDate, selectedService.duration_minutes);
     const formatDateICS = (date: Date) => date.toISOString().replace(/-|:|\.\d+/g, '');
@@ -139,7 +157,7 @@ export function ClientBookingPage() {
     const icsLines = [
       'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//GroomingApp//NONSGML v1.0//EN',
       'BEGIN:VEVENT', `DTSTART:${formatDateICS(startDate)}`, `DTEND:${formatDateICS(endDate)}`,
-      `SUMMARY:Груминг: ${selectedService.title}`, `DESCRIPTION:Салон ${salon.name}. Питомец: ${formData.petName}`,
+      `SUMMARY:Груминг: ${selectedService.title}`, `DESCRIPTION:Запись в ${salon.name}. Питомец: ${formData.petName}`,
       `LOCATION:${salon.address}`, 'BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY', 'DESCRIPTION:Напоминание о записи', 'END:VALARM',
       'END:VEVENT', 'END:VCALENDAR'
     ];
@@ -148,46 +166,54 @@ export function ClientBookingPage() {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'grooming-event.ics');
+    link.setAttribute('download', 'grooming-booking.ics');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  // ФИНАЛЬНЫЙ ШАГ: Отправка на Python Бекенд
   const handleFinish = async () => {
     if (!selectedService || !selectedTime || !salonId) return;
 
-    // @ts-ignore
-    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-    const start_time = new Date(`${format(selectedDate, 'yyyy-MM-dd')}T${selectedTime}:00`).toISOString();
-    const end_time = addMinutes(new Date(start_time), selectedService.duration_minutes).toISOString();
+    setLoading(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/book`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          salonId,
+          service: selectedService,
+          date: format(selectedDate, 'yyyy-MM-dd'),
+          time: selectedTime,
+          client: { name: formData.name, phone: formData.phone },
+          pet: { name: formData.petName, petBreed: formData.petBreed }
+        })
+      });
 
-    const { error } = await supabase.from('appointments').insert([{
-      salon_id: salonId,
-      service_id: selectedService.id,
-      client_name: formData.name,
-      client_phone: formData.phone,
-      pet_name: formData.petName,
-      pet_breed: formData.petBreed,
-      client_tg_user: tgUser?.username || null, // Сохраняем никнейм для мастера
-      start_time,
-      end_time,
-      status: 'pending'
-    }]);
+      const result = await response.json();
 
-    if (error) {
-      toast.error("Ошибка записи.");
-    } else {
-      setStep('success');
-      // @ts-ignore
-      if (window.confetti) window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+      if (result.success) {
+        setStep('success');
+        // @ts-ignore
+        if (window.confetti) window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+      } else {
+        toast.error("Ошибка сервера: " + result.error);
+      }
+    } catch (err) {
+      toast.error("Не удалось связаться с сервером");
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (loading) return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader2 className="animate-spin text-[#007AFF]" size={32}/></div>;
+  if (loading && step !== 'success') {
+    return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader2 className="animate-spin text-[#007AFF]" size={32}/></div>;
+  }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#F2F2F7] max-w-md mx-auto overflow-x-hidden">
+    <div className="flex flex-col min-h-screen bg-[#F2F2F7] max-w-md mx-auto overflow-x-hidden font-sans">
+      {/* HEADER */}
       {step !== 'success' && (
         <header className="bg-white/80 backdrop-blur-md sticky top-0 z-20 px-5 pt-12 pb-4 border-b border-slate-100 flex items-center gap-4">
           {step !== 'showcase' && (
@@ -202,13 +228,16 @@ export function ClientBookingPage() {
       )}
 
       <div className="flex-1 overflow-y-auto no-scrollbar">
+        {/* ШАГ 1: ВИТРИНА */}
         {step === 'showcase' && (
           <div className="animate-in fade-in duration-500">
             <div className="relative h-56 w-full overflow-hidden">
-              <img src={salon?.photo_url || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?q=80&w=800"} className="w-full h-full object-cover" />
+              <img src={salon?.photo_url || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?q=80&w=800"} className="w-full h-full object-cover" alt="Salon" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-6">
                 <h2 className="text-white text-2xl font-extrabold tracking-tight">{salon?.name}</h2>
-                <div className="flex items-center text-white/90 text-[13px] mt-1 gap-1 font-medium"><MapPin size={14} className="text-[#007AFF]" /> {salon?.address}</div>
+                <div className="flex items-center text-white/90 text-[13px] mt-1 gap-1 font-medium">
+                  <MapPin size={14} className="text-[#007AFF]" /> {salon?.address}
+                </div>
               </div>
             </div>
 
@@ -216,10 +245,18 @@ export function ClientBookingPage() {
               <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Наши услуги</h3>
               {services.map(s => (
                 <div key={s.id} className="bg-white rounded-[24px] p-4 shadow-sm border border-slate-100 flex gap-4 active:scale-[0.98] transition-all cursor-pointer" onClick={() => { setSelectedService(s); setStep('datetime'); }}>
-                  <div className="w-20 h-20 rounded-[18px] bg-slate-100 overflow-hidden shrink-0"><img src={s.image_url || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?q=80&w=200"} className="w-full h-full object-cover" /></div>
+                  <div className="w-20 h-20 rounded-[18px] bg-slate-100 overflow-hidden shrink-0">
+                    <img src={s.image_url || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?q=80&w=200"} className="w-full h-full object-cover" alt={s.title} />
+                  </div>
                   <div className="flex-1 flex flex-col justify-between py-0.5">
-                    <div><h4 className="text-[17px] font-bold text-black leading-tight tracking-tight">{s.title}</h4><p className="text-[13px] text-[#8E8E93] mt-1 font-medium">{s.duration_minutes} мин</p></div>
-                    <div className="flex justify-between items-center mt-2"><span className="text-[18px] font-black text-[#007AFF]">{s.price} ₸</span><div className="bg-[#007AFF] text-white px-4 py-1.5 rounded-full text-[13px] font-bold">Выбрать</div></div>
+                    <div>
+                      <h4 className="text-[17px] font-bold text-black leading-tight tracking-tight">{s.title}</h4>
+                      <p className="text-[13px] text-[#8E8E93] mt-1 font-medium">{s.duration_minutes} мин</p>
+                    </div>
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="text-[18px] font-black text-[#007AFF]">{s.price} ₸</span>
+                      <div className="bg-[#007AFF] text-white px-4 py-1.5 rounded-full text-[13px] font-bold">Выбрать</div>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -227,6 +264,7 @@ export function ClientBookingPage() {
           </div>
         )}
 
+        {/* ШАГ 2: ВРЕМЯ */}
         {step === 'datetime' && (
           <div className="p-5 space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
             <section>
@@ -237,7 +275,9 @@ export function ClientBookingPage() {
                   const isSelected = isSameDay(d, selectedDate);
                   return (
                     <button key={i} onClick={() => setSelectedDate(d)} className={`flex flex-col items-center justify-center min-w-[65px] h-[85px] rounded-[20px] transition-all ${isSelected ? 'bg-[#007AFF] text-white shadow-lg' : 'bg-white text-black border border-slate-100'}`}>
-                      <span className={`text-[11px] font-bold uppercase ${isSelected ? 'opacity-80' : 'opacity-40'}`}>{format(d, 'eee', { locale: ru })}</span>
+                      <span className={`text-[11px] font-bold uppercase ${isSelected ? 'opacity-80' : 'opacity-40'}`}>
+                        {format(d, 'eee', { locale: ru })}
+                      </span>
                       <span className="text-[20px] font-black mt-1">{format(d, 'd')}</span>
                     </button>
                   );
@@ -247,48 +287,111 @@ export function ClientBookingPage() {
 
             <section>
               <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 mb-3">Доступное время</h3>
-              <div className="grid grid-cols-4 gap-2.5">
-                {getSlots().map(time => (
-                  <button key={time} onClick={() => setSelectedTime(time)} className={`py-3 rounded-[14px] text-[15px] font-bold transition-all border ${selectedTime === time ? 'bg-[#007AFF] text-white border-[#007AFF] shadow-md' : 'bg-white text-black border-slate-100 active:bg-slate-50'}`}>{time}</button>
-                ))}
+              <div className="relative min-h-[100px]">
+                {slotsLoading ? (
+                  <div className="flex justify-center py-10"><Loader2 className="animate-spin text-slate-300" /></div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-2.5">
+                    {getSlots().map(time => (
+                      <button key={time} onClick={() => setSelectedTime(time)} className={`py-3 rounded-[14px] text-[15px] font-bold transition-all border ${selectedTime === time ? 'bg-[#007AFF] text-white border-[#007AFF] shadow-md' : 'bg-white text-black border-slate-100 active:bg-slate-50'}`}>
+                        {time}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!slotsLoading && getSlots().length === 0 && (
+                  <div className="text-center py-10 text-[#8E8E93] font-medium bg-white rounded-[20px] border border-dashed">На этот день окон нет</div>
+                )}
               </div>
             </section>
-            {selectedTime && <button onClick={() => setStep('details')} className="w-full bg-[#007AFF] text-white py-4 rounded-[20px] font-bold text-[17px] shadow-xl shadow-blue-100 active:scale-95 transition-all">Продолжить</button>}
+
+            {selectedTime && (
+              <button onClick={() => setStep('details')} className="w-full bg-[#007AFF] text-white py-4 rounded-[20px] font-bold text-[17px] shadow-xl shadow-blue-100 active:scale-95 transition-all">
+                Продолжить
+              </button>
+            )}
           </div>
         )}
 
+        {/* ШАГ 3: ФОРМА */}
         {step === 'details' && (
           <div className="p-5 space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
             <div className="bg-white rounded-[24px] p-5 border border-slate-100 space-y-4 shadow-sm">
-              <div className="flex items-center gap-4"><div className="bg-[#007AFF]/10 p-3 rounded-[16px] text-[#007AFF]"><Clock size={24} /></div>
-              <div><p className="text-[13px] text-[#8E8E93] font-bold uppercase tracking-tight">Ваша запись</p><p className="text-[16px] font-black text-black">{selectedService?.title}</p>
-              <p className="text-[14px] font-bold text-[#007AFF] mt-0.5">{format(selectedDate, 'd MMMM', { locale: ru })} в {selectedTime}</p></div></div>
+              <div className="flex items-center gap-4">
+                <div className="bg-[#007AFF]/10 p-3 rounded-[16px] text-[#007AFF]"><Clock size={24} /></div>
+                <div>
+                  <p className="text-[13px] text-[#8E8E93] font-bold uppercase tracking-tight">Ваша запись</p>
+                  <p className="text-[16px] font-black text-black">{selectedService?.title}</p>
+                  <p className="text-[14px] font-bold text-[#007AFF] mt-0.5">
+                    {format(selectedDate, 'd MMMM', { locale: ru })} в {selectedTime}
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-4">
-              <div className="bg-white rounded-[20px] p-4 border border-slate-100 shadow-sm"><p className="text-[10px] font-black text-[#8E8E93] uppercase mb-1 ml-1">Имя владельца</p><input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-transparent text-[17px] font-bold outline-none caret-[#007AFF]" placeholder="Иван" /></div>
-              <div className="bg-white rounded-[20px] p-4 border border-slate-100 shadow-sm"><p className="text-[10px] font-black text-[#8E8E93] uppercase mb-1 ml-1">Телефон</p><PhoneInput value={formData.phone} onChange={val => setFormData({...formData, phone: val})} className="border-none shadow-none h-auto p-0 text-[17px] font-bold caret-[#007AFF]" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white rounded-[20px] p-4 border border-slate-100 shadow-sm"><p className="text-[10px] font-black text-[#8E8E93] uppercase mb-1 ml-1">Кличка</p><input value={formData.petName} onChange={e => setFormData({...formData, petName: e.target.value})} className="w-full bg-transparent text-[17px] font-bold outline-none caret-[#007AFF]" placeholder="Арчи" /></div>
-                <div className="bg-white rounded-[20px] p-4 border border-slate-100 shadow-sm"><p className="text-[10px] font-black text-[#8E8E93] uppercase mb-1 ml-1">Порода</p><input value={formData.petBreed} onChange={e => setFormData({...formData, petBreed: e.target.value})} className="w-full bg-transparent text-[17px] font-bold outline-none caret-[#007AFF]" placeholder="Шпиц" /></div>
+              <div className="bg-white rounded-[20px] p-4 border border-slate-100 shadow-sm">
+                <p className="text-[10px] font-black text-[#8E8E93] uppercase mb-1 ml-1">Имя владельца</p>
+                <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-transparent text-[17px] font-bold outline-none caret-[#007AFF]" placeholder="Иван" />
               </div>
+              <div className="bg-white rounded-[20px] p-4 border border-slate-100 shadow-sm">
+                <p className="text-[10px] font-black text-[#8E8E93] uppercase mb-1 ml-1">Телефон</p>
+                <PhoneInput value={formData.phone} onChange={val => setFormData({...formData, phone: val})} className="border-none shadow-none h-auto p-0 text-[17px] font-bold caret-[#007AFF]" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white rounded-[20px] p-4 border border-slate-100 shadow-sm">
+                  <p className="text-[10px] font-black text-[#8E8E93] uppercase mb-1 ml-1">Кличка</p>
+                  <input value={formData.petName} onChange={e => setFormData({...formData, petName: e.target.value})} className="w-full bg-transparent text-[17px] font-bold outline-none caret-[#007AFF]" placeholder="Арчи" />
+                </div>
+                <div className="bg-white rounded-[20px] p-4 border border-slate-100 shadow-sm">
+                  <p className="text-[10px] font-black text-[#8E8E93] uppercase mb-1 ml-1">Порода</p>
+                  <input value={formData.petBreed} onChange={e => setFormData({...formData, petBreed: e.target.value})} className="w-full bg-transparent text-[17px] font-bold outline-none caret-[#007AFF]" placeholder="Шпиц" />
+                </div>
+              </div>
+
               <div className="flex items-center gap-3 p-4 bg-white rounded-[20px] border border-slate-100 shadow-sm" onClick={() => setFormData({...formData, agreed: !formData.agreed})}>
-                <div className={`w-6 h-6 rounded-[8px] border-2 flex items-center justify-center transition-all ${formData.agreed ? 'bg-[#34C759] border-[#34C759]' : 'border-slate-200'}`}>{formData.agreed && <CheckCircle2 size={16} className="text-white" />}</div>
+                <div className={`w-6 h-6 rounded-[8px] border-2 flex items-center justify-center transition-all ${formData.agreed ? 'bg-[#34C759] border-[#34C759]' : 'border-slate-200'}`}>
+                  {formData.agreed && <CheckCircle2 size={16} className="text-white" />}
+                </div>
                 <span className="text-[13px] text-[#8E8E93] font-bold leading-tight">Согласен на обработку данных</span>
               </div>
             </div>
-            <button disabled={!formData.agreed || !formData.phone || !formData.petName} onClick={handleFinish} className={`w-full py-4 rounded-[20px] font-black text-[17px] shadow-xl transition-all ${formData.agreed && formData.phone && formData.petName ? 'bg-[#34C759] text-white active:scale-95 shadow-green-100' : 'bg-slate-200 text-[#8E8E93] cursor-not-allowed shadow-none'}`}>Записаться</button>
+
+            <button
+              disabled={!formData.agreed || !formData.phone || !formData.petName}
+              onClick={handleFinish}
+              className={`w-full py-4 rounded-[20px] font-black text-[17px] shadow-xl transition-all ${
+                formData.agreed && formData.phone && formData.petName
+                ? 'bg-[#34C759] text-white active:scale-95 shadow-green-100'
+                : 'bg-slate-200 text-[#8E8E93] cursor-not-allowed shadow-none'
+              }`}
+            >
+              Записаться
+            </button>
           </div>
         )}
 
+        {/* ШАГ 4: УСПЕХ */}
         {step === 'success' && (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center animate-in zoom-in duration-500">
-            <div className="w-24 h-24 bg-[#34C759] rounded-full flex items-center justify-center text-white mb-8 shadow-2xl shadow-green-200"><CheckCircle2 size={52} strokeWidth={2.5} /></div>
+            <div className="w-24 h-24 bg-[#34C759] rounded-full flex items-center justify-center text-white mb-8 shadow-2xl shadow-green-200">
+              <CheckCircle2 size={52} strokeWidth={2.5} />
+            </div>
             <h2 className="text-[32px] font-black text-black mb-3 tracking-tight">Готово!</h2>
-            <p className="text-[17px] text-[#8E8E93] font-bold leading-relaxed mb-12 px-4">Мы пришлем уведомление в Telegram за час до начала записи. 🎉</p>
+            <p className="text-[17px] text-[#8E8E93] font-bold leading-relaxed mb-12 px-4">
+              Мы пришлем уведомление в Telegram за час до начала записи. 🎉
+            </p>
+
             <div className="w-full space-y-3">
-              <button onClick={handleCalendarDownload} className="w-full bg-[#007AFF] text-white py-4 rounded-[22px] font-bold flex items-center justify-center gap-3 shadow-xl shadow-blue-100 active:scale-95 transition-all"><CalendarPlus size={20} /> Добавить в календарь</button>
-              <button onClick={() => { setStep('showcase'); setSelectedService(null); setSelectedTime(null); }} className="w-full py-4 text-[#007AFF] font-bold text-[17px] active:opacity-50">Вернуться назад</button>
+              <button
+                onClick={handleCalendarDownload}
+                className="w-full bg-[#007AFF] text-white py-4 rounded-[22px] font-bold flex items-center justify-center gap-3 shadow-xl shadow-blue-100 active:scale-95 transition-all"
+              >
+                <CalendarPlus size={20} /> Добавить в календарь
+              </button>
+              <button onClick={() => { setStep('showcase'); setSelectedService(null); setSelectedTime(null); }} className="w-full py-4 text-[#007AFF] font-bold text-[17px] active:opacity-50">
+                Вернуться назад
+              </button>
             </div>
           </div>
         )}
