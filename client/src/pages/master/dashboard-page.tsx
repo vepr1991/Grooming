@@ -341,7 +341,7 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
               <p className="text-[13px] text-[#8E8E93] pt-1 font-medium">Владелец: {app.client_name}</p>
 
               <div className="flex items-center gap-2 mt-3 w-full">
-                {/* 👇 1. КНОПКА ТЕЛЕФОНА (ЗАНИМАЕТ ВСЁ ОСТАЛЬНОЕ МЕСТО) */}
+                {/* 👇 1. КНОПКА ТЕЛЕФОНА (ВЛЕВО) */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -349,21 +349,23 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
                     toast.success("Номер скопирован");
                     window.location.href = `tel:${cleanPhone}`;
                   }}
-                  className="flex-1 min-w-0 flex items-center justify-center gap-2 bg-[#F2F2F7] text-black py-3 px-3 rounded-2xl text-[14px] font-bold active:scale-95 transition-all"
+                  // Добавил: justify-start, pl-4 (выравнивание влево)
+                  className="flex-1 min-w-0 flex items-center justify-start pl-4 gap-3 bg-[#F2F2F7] text-black py-3 rounded-2xl text-[14px] font-bold active:scale-95 transition-all overflow-hidden"
                 >
                   <Copy size={16} className="shrink-0 text-[#8E8E93]" />
                   <span className="truncate">{app.client_phone}</span>
                 </button>
 
-                {/* 👇 2. КНОПКА МЕССЕНДЖЕРА (ФИКСИРОВАННАЯ ШИРИНА) */}
+                {/* 👇 2. КНОПКА МЕССЕНДЖЕРА (ВПРАВО, ШИРЕ) */}
                 <a
                   href={chatLink}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className={`w-14 h-[44px] flex items-center justify-center rounded-2xl active:scale-95 transition-all shrink-0 ${isTelegram ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}
+                  // Изменил w-14 на w-16 (шире)
+                  className={`w-16 h-[46px] flex items-center justify-center rounded-2xl active:scale-95 transition-all shrink-0 ${isTelegram ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}
                 >
-                  {isTelegram ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg> : <MessageSquare size={20} />}
+                  {isTelegram ? <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg> : <MessageSquare size={22} />}
                 </a>
               </div>
 
