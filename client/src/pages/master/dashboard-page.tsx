@@ -320,7 +320,7 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
 
   return (
     <div className={`bg-white rounded-[16px] shadow-sm border border-slate-100 transition-all duration-300 overflow-hidden ${expanded ? 'shadow-md' : ''}`}>
-      <div className="p-4 flex items-center justify-between cursor-pointer active:bg-zinc-50" onClick={() => setExpanded(!expanded)}>
+      <div className="p-4 flex items-center justify-between cursor-pointer active:bg-zinc-50 hover:bg-zinc-50 transition-colors" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center gap-4 min-w-0 flex-1">
           <div className="flex flex-col items-center justify-center shrink-0 w-[52px]">
             <span className="text-[17px] font-bold text-black">{format(sTime, 'HH:mm')}</span>
@@ -339,40 +339,36 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
               <p className="text-[15px] font-bold text-black truncate">{app.pet_breed || "Порода не указана"}</p>
               <div className="bg-[#F2F2F7] rounded-xl p-2.5"><p className="text-[13px] font-semibold text-black truncate">{sInfo?.title}</p><p className="text-[11px] text-[#8E8E93]">{sInfo?.duration_minutes || '30'} мин • {sInfo?.price || '0'} ₸</p></div>
               <p className="text-[13px] text-[#8E8E93] pt-1 font-medium">Владелец: {app.client_name}</p>
-
-              <div className="flex items-center gap-2 mt-3 w-full">
-                {/* 👇 1. КНОПКА ТЕЛЕФОНА (ВЛЕВО) */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigator.clipboard.writeText(app.client_phone);
-                    toast.success("Номер скопирован");
-                    window.location.href = `tel:${cleanPhone}`;
-                  }}
-                  // Добавил: justify-start, pl-4 (выравнивание влево)
-                  className="flex-1 min-w-0 flex items-center justify-start pl-4 gap-3 bg-[#F2F2F7] text-black py-3 rounded-2xl text-[14px] font-bold active:scale-95 transition-all overflow-hidden"
-                >
-                  <Copy size={16} className="shrink-0 text-[#8E8E93]" />
-                  <span className="truncate">{app.client_phone}</span>
-                </button>
-
-                {/* 👇 2. КНОПКА МЕССЕНДЖЕРА (ВПРАВО, ШИРЕ) */}
-                <a
-                  href={chatLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  // Изменил w-14 на w-16 (шире)
-                  className={`w-16 h-[46px] flex items-center justify-center rounded-2xl active:scale-95 transition-all shrink-0 ${isTelegram ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}
-                >
-                  {isTelegram ? <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg> : <MessageSquare size={22} />}
-                </a>
-              </div>
-
             </div>
           </div>
+
+          <div className="flex items-center gap-2 mb-2 w-full">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(app.client_phone);
+                toast.success("Номер скопирован");
+                window.location.href = `tel:${cleanPhone}`;
+              }}
+              className="flex-1 min-w-0 flex items-center justify-start pl-4 gap-3 bg-[#F2F2F7] text-black py-3 rounded-2xl text-[14px] font-bold active:scale-95 transition-all overflow-hidden hover:bg-slate-200"
+            >
+              <Copy size={16} className="shrink-0 text-[#8E8E93]" />
+              <span className="truncate">{app.client_phone}</span>
+            </button>
+
+            <a
+              href={chatLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className={`w-32 h-[46px] flex items-center justify-center rounded-2xl active:scale-95 transition-all shrink-0 hover:opacity-80 ${isTelegram ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}
+            >
+              {isTelegram ? <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg> : <MessageSquare size={22} />}
+            </a>
+          </div>
+
           <div className="grid grid-cols-2 gap-2 mt-2 pt-3 border-t border-[#F2F2F7]">
-            {app.status === 'pending' ? (<><button onClick={() => onStatusUpdate(app.id, 'confirmed')} className="h-11 bg-[#007AFF] text-white rounded-xl text-[15px] font-bold active:scale-95 transition-all">Принять</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="h-11 bg-[#F2F2F7] text-rose-500 rounded-xl text-[15px] font-bold active:scale-95 transition-all">Отмена</button></>) : app.status === 'confirmed' ? (<><button onClick={() => onStatusUpdate(app.id, 'completed')} className="h-11 bg-[#2E7D32] text-white rounded-xl text-[15px] font-bold active:scale-95 transition-all">Завершить</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="h-11 bg-[#F2F2F7] text-rose-500 rounded-xl text-[15px] font-bold active:scale-95 transition-all">Отмена</button></>) : null}
+            {app.status === 'pending' ? (<><button onClick={() => onStatusUpdate(app.id, 'confirmed')} className="h-11 bg-[#007AFF] text-white rounded-xl text-[15px] font-bold active:scale-95 transition-all hover:bg-[#0069d9]">Принять</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="h-11 bg-[#F2F2F7] text-rose-500 rounded-xl text-[15px] font-bold active:scale-95 transition-all hover:bg-red-50">Отмена</button></>) : app.status === 'confirmed' ? (<><button onClick={() => onStatusUpdate(app.id, 'completed')} className="h-11 bg-[#2E7D32] text-white rounded-xl text-[15px] font-bold active:scale-95 transition-all hover:bg-[#256628]">Завершить</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="h-11 bg-[#F2F2F7] text-rose-500 rounded-xl text-[15px] font-bold active:scale-95 transition-all hover:bg-red-50">Отмена</button></>) : null}
           </div>
         </div>
       )}
