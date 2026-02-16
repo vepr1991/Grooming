@@ -35,7 +35,6 @@ bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 
 # --- 3. Управление жизненным циклом (Lifespan) ---
-# Решает проблему конфликтов ботов (Error 409)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ЗАПУСК
@@ -54,7 +53,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="Grooming API", version="2.2", lifespan=lifespan)
+app = FastAPI(title="Grooming API", version="2.3", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -91,7 +90,6 @@ class BookingRequest(BaseModel):
     pet: PetInfo
 
 
-# 👇 Модель для обновления статуса
 class StatusUpdate(BaseModel):
     status: str
 
@@ -122,11 +120,11 @@ def check_overlap(salon_id: str, start_time: datetime, end_time: datetime) -> bo
         return len(response.data) > 0
     except Exception as e:
         logger.error(f"Ошибка проверки слотов: {e}")
-        return True  # Безопасный отказ
+        return True
 
 
 def send_telegram_notification_task(salon_id: str, booking_data: BookingRequest, start_dt: datetime):
-    """Отправка уведомления мастеру"""
+    """Отправка уведомления МАСТЕРУ о новой записи"""
     try:
         res = supabase.table("salons").select("telegram_chat_id, name").eq("id", salon_id).single().execute()
 
@@ -152,28 +150,86 @@ def send_telegram_notification_task(salon_id: str, booking_data: BookingRequest,
                 f"<i>Зайдите в приложение, чтобы подтвердить.</i>"
             )
 
-            # 👇 ИСПРАВЛЕННАЯ КНОПКА: Ссылка на ТВОЙ фронтенд на Render
             markup = types.InlineKeyboardMarkup()
-
-            # Твой реальный URL фронтенда
             FRONTEND_URL = "https://grooming-react-front.onrender.com"
-
-            # Ссылка ведет сразу в раздел для мастера
             web_app_info = types.WebAppInfo(url=f"{FRONTEND_URL}/master")
             markup.add(types.InlineKeyboardButton("Открыть админку", web_app=web_app_info))
 
             bot.send_message(master_chat_id, msg, parse_mode="HTML", reply_markup=markup)
-            logger.info(f"Уведомление отправлено: {master_chat_id}")
+            logger.info(f"Уведомление отправлено мастеру: {master_chat_id}")
 
     except Exception as e:
-        logger.error(f"Ошибка отправки Telegram уведомления: {e}")
+        logger.error(f"Ошибка отправки Telegram уведомления мастеру: {e}")
+
+
+def send_client_confirmation(appointment_id: str):
+    """Отправка уведомления КЛИЕНТУ о подтверждении"""
+    try:
+        # 1. Получаем полные данные о записи, включая салон и услугу
+        # Используем join через Supabase (зависит от настройки FK, но попробуем получить данные по отдельности, если join сложен)
+        # Надежнее получить данные appointments, а потом догрузить остальное
+        app_res = supabase.table("appointments").select("*, salons(name, phone), services(title)").eq("id",
+                                                                                                      appointment_id).single().execute()
+
+        if not app_res.data:
+            logger.warning("Запись не найдена для уведомления клиента")
+            return
+
+        appt = app_res.data
+        client_tg_raw = appt.get("client_tg_user")
+
+        # Если у клиента нет Telegram (ручная запись), выходим
+        if not client_tg_raw:
+            return
+
+        # Парсим данные клиента
+        if isinstance(client_tg_raw, str):
+            client_tg = json.loads(client_tg_raw)
+        else:
+            client_tg = client_tg_raw
+
+        client_chat_id = client_tg.get("id")
+
+        if not client_chat_id:
+            return
+
+        # Форматируем дату и время
+        # Supabase возвращает ISO формат (например: 2026-02-16T10:00:00+00:00)
+        start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
+
+        # Корректируем время (если нужно) или выводим как есть (UTC).
+        # В идеале хранить таймзону салона, но пока выведем как в базе + смещение если нужно.
+        # Для простоты пока выводим то, что в базе (предполагаем, что оно корректно отображается)
+        date_str = start_dt.strftime('%d.%m.%Y')
+        time_str = start_dt.strftime('%H:%M')
+
+        salon_name = appt['salons']['name'] if appt.get('salons') else "Салон"
+        service_title = appt['services']['title'] if appt.get('services') else "Услуга"
+        salon_phone = appt['salons'].get('phone', '') if appt.get('salons') else ""
+
+        msg = (
+            f"✅ <b>Ваша запись подтверждена!</b>\n\n"
+            f"✂️ <b>Салон:</b> {salon_name}\n"
+            f"🛠 <b>Услуга:</b> {service_title}\n"
+            f"📅 <b>Дата:</b> {date_str}\n"
+            f"⏰ <b>Время:</b> {time_str}\n"
+        )
+
+        if salon_phone:
+            msg += f"\n📞 <b>Телефон для связи:</b> {salon_phone}"
+
+        bot.send_message(client_chat_id, msg, parse_mode="HTML")
+        logger.info(f"Уведомление отправлено клиенту: {client_chat_id}")
+
+    except Exception as e:
+        logger.error(f"Ошибка отправки уведомления клиенту: {e}")
 
 
 # --- 6. API Endpoints ---
 
 @app.get("/")
 def health_check():
-    return {"status": "active", "service": "Grooming Backend v2.2"}
+    return {"status": "active", "service": "Grooming Backend v2.3"}
 
 
 @app.get("/api/user-status/{tg_id}")
@@ -229,7 +285,7 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
         if not res.data:
             raise HTTPException(status_code=500, detail="Ошибка базы данных")
 
-        # 4. Уведомление
+        # 4. Уведомление МАСТЕРУ
         background_tasks.add_task(send_telegram_notification_task, data.salonId, data, start_dt)
 
         return {"success": True, "id": res.data[0]['id']}
@@ -241,15 +297,18 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
 
-# 👇 НОВЫЙ ЭНДПОИНТ: Обновление статуса
 @app.patch("/api/appointments/{appointment_id}/status")
-async def update_appointment_status(appointment_id: str, payload: StatusUpdate):
+async def update_appointment_status(appointment_id: str, payload: StatusUpdate, background_tasks: BackgroundTasks):
     try:
-        # Обновляем статус через сервисный ключ (обходит RLS)
+        # 1. Обновляем статус
         res = supabase.table("appointments").update({"status": payload.status}).eq("id", appointment_id).execute()
 
         if not res.data:
             raise HTTPException(status_code=404, detail="Запись не найдена")
+
+        # 2. Если статус CONFIRMED, отправляем уведомление КЛИЕНТУ фоном
+        if payload.status == 'confirmed':
+            background_tasks.add_task(send_client_confirmation, appointment_id)
 
         return {"success": True, "data": res.data[0]}
     except Exception as e:
