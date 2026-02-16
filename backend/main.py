@@ -152,9 +152,14 @@ def send_telegram_notification_task(salon_id: str, booking_data: BookingRequest,
                 f"<i>Зайдите в приложение, чтобы подтвердить.</i>"
             )
 
-            # Кнопка на Mini App
+            # 👇 ИСПРАВЛЕННАЯ КНОПКА: Ссылка на ТВОЙ фронтенд на Render
             markup = types.InlineKeyboardMarkup()
-            web_app_info = types.WebAppInfo(url="https://t.me/pet_groom_bot/app")
+
+            # Твой реальный URL фронтенда
+            FRONTEND_URL = "https://grooming-react-front.onrender.com"
+
+            # Ссылка ведет сразу в раздел для мастера
+            web_app_info = types.WebAppInfo(url=f"{FRONTEND_URL}/master")
             markup.add(types.InlineKeyboardButton("Открыть админку", web_app=web_app_info))
 
             bot.send_message(master_chat_id, msg, parse_mode="HTML", reply_markup=markup)
