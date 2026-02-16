@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Trash2, ChevronDown, Scissors, ImageIcon, Camera } from "lucide-react";
+import { Plus, Trash2, ChevronDown, Scissors, Image as ImageIcon, Camera, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
+
+// 👇 URL ТВОЕГО БЕКЕНДА
+const BACKEND_URL = "https://grooming-tma.onrender.com";
 
 type Service = {
   id: string;
@@ -17,6 +20,8 @@ export function MasterServicesPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
+  const [submitting, setSubmitting] = useState(false); // Лоадер при отправке
+
   const [newService, setNewService] = useState<Partial<Service>>({
     title: "",
     price: undefined,
@@ -54,27 +59,39 @@ export function MasterServicesPage() {
       return;
     }
 
-    const toastId = toast.loading("Создаем услугу...");
-    const { error } = await supabase.from("services").insert([
-      {
+    setSubmitting(true);
+    // const toastId = toast.loading("Создаем услугу...");
+
+    try {
+      const payload = {
         salon_id: salonId,
         title: newService.title,
         price: Number(newService.price),
         duration_minutes: Number(newService.duration_minutes),
         description: newService.description,
-        image_url: newService.image_url
-      },
-    ]);
+        image_url: newService.image_url // Если бекенд поддерживает, добавь это поле в Pydantic модель
+      };
 
-    toast.dismiss(toastId);
+      // 👇 ИСПРАВЛЕНИЕ: Используем Python API
+      const response = await fetch(`${BACKEND_URL}/api/services`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-    if (error) {
-      toast.error("Ошибка: " + error.message);
-    } else {
+      if (!response.ok) throw new Error("Ошибка создания");
+
       toast.success("Услуга добавлена");
       setIsAdding(false);
       setNewService({ title: "", price: undefined, duration_minutes: 60, description: "" });
       fetchServices();
+
+    } catch (e) {
+      toast.error("Ошибка при создании услуги");
+      console.error(e);
+    } finally {
+      // toast.dismiss(toastId);
+      setSubmitting(false);
     }
   };
 
@@ -82,12 +99,19 @@ export function MasterServicesPage() {
     e.stopPropagation();
     if (!confirm("Удалить эту услугу из прайса?")) return;
 
-    const { error } = await supabase.from("services").delete().eq("id", id);
-    if (error) {
-      toast.error("Ошибка при удалении");
-    } else {
+    try {
+      // 👇 ИСПРАВЛЕНИЕ: Используем Python API
+      const response = await fetch(`${BACKEND_URL}/api/services/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) throw new Error("Ошибка удаления");
+
       toast.success("Услуга удалена");
-      fetchServices();
+      // Оптимистичное обновление
+      setServices(prev => prev.filter(s => s.id !== id));
+    } catch (e) {
+      toast.error("Не удалось удалить услугу");
     }
   };
 
@@ -123,11 +147,13 @@ export function MasterServicesPage() {
 
       {isAdding && (
         <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-[2px] flex items-end justify-center p-0">
-          <div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[20px] pb-10 overflow-hidden animate-in slide-in-from-bottom duration-300 shadow-2xl h-[92vh] flex flex-col">
+          <div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[24px] pb-10 overflow-hidden animate-in slide-in-from-bottom duration-300 shadow-2xl h-[92vh] flex flex-col">
             <div className="px-5 py-4 flex justify-between items-center border-b border-slate-200 bg-white/80 sticky top-0 z-10">
               <button onClick={() => setIsAdding(false)} className="text-[17px] text-[#007AFF]">Отмена</button>
               <h2 className="text-[17px] font-bold">Новая услуга</h2>
-              <button onClick={handleAdd} className="text-[17px] font-bold text-[#007AFF]">Готово</button>
+              <button onClick={handleAdd} disabled={submitting} className="text-[17px] font-bold text-[#007AFF]">
+                {submitting ? <Loader2 className="animate-spin" /> : "Готово"}
+              </button>
             </div>
 
             <div className="px-5 mt-6 space-y-5 flex-1 overflow-y-auto no-scrollbar pb-10">
@@ -138,24 +164,25 @@ export function MasterServicesPage() {
                   ) : (
                     <ImageIcon size={48} className="text-[#C7C7CC]" />
                   )}
-                  <div className="absolute bottom-2 right-2 bg-[#007AFF] text-white p-2 rounded-full shadow-lg">
+                  {/* <div className="absolute bottom-2 right-2 bg-[#007AFF] text-white p-2 rounded-full shadow-lg">
                     <Camera size={16} />
-                  </div>
+                  </div> */}
                 </div>
-                <input
+                {/* Временно скрыл загрузку фото, пока на бекенде нет поддержки файлов */}
+                {/* <input
                   placeholder="URL фотографии"
                   className="w-full text-center text-[13px] text-[#007AFF] bg-transparent outline-none"
                   value={newService.image_url || ''}
                   onChange={e => setNewService({...newService, image_url: e.target.value})}
-                />
+                /> */}
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1">Название услуги</label>
-                <div className="bg-white rounded-[12px] p-1 border border-slate-100 shadow-sm">
+                <div className="bg-white rounded-[12px] p-3 border border-slate-100 shadow-sm">
                   <input
                     placeholder="Например: Полный комплекс"
-                    className="w-full px-4 py-3 bg-transparent text-[17px] outline-none caret-[#007AFF]"
+                    className="w-full text-[17px] outline-none caret-[#007AFF] bg-transparent"
                     value={newService.title}
                     onChange={e => setNewService({...newService, title: e.target.value})}
                   />
@@ -165,12 +192,12 @@ export function MasterServicesPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1">Цена (₸)</label>
-                  <div className="bg-white rounded-[12px] p-1 border border-slate-100 shadow-sm">
+                  <div className="bg-white rounded-[12px] p-3 border border-slate-100 shadow-sm">
                     <input
                       type="number"
                       inputMode="decimal"
                       placeholder="0"
-                      className="w-full px-4 py-3 bg-transparent text-[17px] font-bold text-[#007AFF] outline-none caret-[#007AFF]"
+                      className="w-full text-[17px] font-bold text-[#007AFF] outline-none caret-[#007AFF] bg-transparent"
                       value={newService.price ?? ""}
                       onChange={e => setNewService({...newService, price: e.target.value === '' ? undefined : Number(e.target.value)})}
                     />
@@ -178,12 +205,12 @@ export function MasterServicesPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1">Время (мин)</label>
-                  <div className="bg-white rounded-[12px] p-1 border border-slate-100 shadow-sm">
+                  <div className="bg-white rounded-[12px] p-3 border border-slate-100 shadow-sm">
                     <input
                       type="number"
                       inputMode="numeric"
                       placeholder="60"
-                      className="w-full px-4 py-3 bg-transparent text-[17px] font-bold text-[#007AFF] outline-none caret-[#007AFF]"
+                      className="w-full text-[17px] font-bold text-[#007AFF] outline-none caret-[#007AFF] bg-transparent"
                       value={newService.duration_minutes ?? ""}
                       onChange={e => setNewService({...newService, duration_minutes: e.target.value === '' ? undefined : Number(e.target.value)})}
                     />
@@ -193,11 +220,11 @@ export function MasterServicesPage() {
 
               <div className="space-y-1.5">
                 <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1">Описание</label>
-                <div className="bg-white rounded-[12px] p-1 border border-slate-100 shadow-sm">
+                <div className="bg-white rounded-[12px] p-3 border border-slate-100 shadow-sm">
                   <textarea
                     placeholder="Что входит в услугу..."
                     rows={4}
-                    className="w-full px-4 py-3 bg-transparent text-[17px] outline-none resize-none caret-[#007AFF]"
+                    className="w-full text-[17px] outline-none resize-none caret-[#007AFF] bg-transparent"
                     value={newService.description}
                     onChange={e => setNewService({...newService, description: e.target.value})}
                   />
@@ -228,7 +255,6 @@ function ServiceCard({ service, onDelete }: { service: Service; onDelete: (e: Re
           )}
         </div>
 
-        {/* 👇 ИСПРАВЛЕННЫЙ КОНТЕЙНЕР ЗАГОЛОВКА */}
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-start gap-2">
             <div className="min-w-0 flex-1">
@@ -236,7 +262,8 @@ function ServiceCard({ service, onDelete }: { service: Service; onDelete: (e: Re
                 {service.title}
               </h3>
             </div>
-            <span className="text-[15px] font-bold text-[#007AFF] shrink-0">{service.price} ₸</span>
+            {/* Обернул цену в span для контроля переноса */}
+            <span className="text-[15px] font-bold text-[#007AFF] shrink-0 whitespace-nowrap">{service.price} ₸</span>
           </div>
           <div className="flex items-center gap-2 mt-1">
             <span className="text-[13px] text-[#8E8E93]">{service.duration_minutes} мин</span>

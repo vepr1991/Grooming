@@ -4,7 +4,7 @@ import logging
 import json
 import time
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="Grooming API", version="2.3", lifespan=lifespan)
+app = FastAPI(title="Grooming API", version="2.4", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,6 +64,8 @@ app.add_middleware(
 
 
 # --- 4. Модели данных ---
+
+# ... (Существующие модели) ...
 class ClientInfo(BaseModel):
     name: str
     phone: str
@@ -92,6 +94,24 @@ class BookingRequest(BaseModel):
 
 class StatusUpdate(BaseModel):
     status: str
+
+
+# 👇 НОВЫЕ МОДЕЛИ (ДЛЯ РЕФАКТОРИНГА)
+class SalonUpdate(BaseModel):
+    name: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    description: Optional[str] = None
+    schedule: Optional[str] = None  # JSON string
+    # Добавляй сюда любые поля, которые есть в таблице salons
+
+
+class ServiceCreate(BaseModel):
+    salon_id: str
+    title: str
+    description: Optional[str] = ""
+    price: int
+    duration_minutes: int
 
 
 # --- 5. Вспомогательные функции ---
@@ -124,20 +144,17 @@ def check_overlap(salon_id: str, start_time: datetime, end_time: datetime) -> bo
 
 
 def send_telegram_notification_task(salon_id: str, booking_data: BookingRequest, start_dt: datetime):
-    """Отправка уведомления МАСТЕРУ о новой записи"""
+    """Отправка уведомления МАСТЕРУ"""
     try:
         res = supabase.table("salons").select("telegram_chat_id, name").eq("id", salon_id).single().execute()
-
-        if not res.data:
-            return
+        if not res.data: return
 
         master_chat_id = res.data.get("telegram_chat_id")
         salon_name = res.data.get("name")
 
         if master_chat_id:
             pet_info = f"{booking_data.pet.name}"
-            if booking_data.pet.petBreed:
-                pet_info += f" ({booking_data.pet.petBreed})"
+            if booking_data.pet.petBreed: pet_info += f" ({booking_data.pet.petBreed})"
 
             msg = (
                 f"🔔 <b>Новая запись в {salon_name}!</b>\n\n"
@@ -149,60 +166,38 @@ def send_telegram_notification_task(salon_id: str, booking_data: BookingRequest,
                 f"⏰ <b>Время:</b> {start_dt.strftime('%H:%M')}\n\n"
                 f"<i>Зайдите в приложение, чтобы подтвердить.</i>"
             )
-
             markup = types.InlineKeyboardMarkup()
             FRONTEND_URL = "https://grooming-react-front.onrender.com"
             web_app_info = types.WebAppInfo(url=f"{FRONTEND_URL}/master")
             markup.add(types.InlineKeyboardButton("Открыть админку", web_app=web_app_info))
-
             bot.send_message(master_chat_id, msg, parse_mode="HTML", reply_markup=markup)
             logger.info(f"Уведомление отправлено мастеру: {master_chat_id}")
-
     except Exception as e:
         logger.error(f"Ошибка отправки Telegram уведомления мастеру: {e}")
 
 
 def send_client_confirmation(appointment_id: str):
-    """Отправка уведомления КЛИЕНТУ о подтверждении"""
+    """Отправка уведомления КЛИЕНТУ"""
     try:
-        # 1. Получаем полные данные о записи, включая салон и услугу
-        # Используем join через Supabase (зависит от настройки FK, но попробуем получить данные по отдельности, если join сложен)
-        # Надежнее получить данные appointments, а потом догрузить остальное
         app_res = supabase.table("appointments").select("*, salons(name, phone), services(title)").eq("id",
                                                                                                       appointment_id).single().execute()
-
-        if not app_res.data:
-            logger.warning("Запись не найдена для уведомления клиента")
-            return
+        if not app_res.data: return
 
         appt = app_res.data
         client_tg_raw = appt.get("client_tg_user")
+        if not client_tg_raw: return
 
-        # Если у клиента нет Telegram (ручная запись), выходим
-        if not client_tg_raw:
-            return
-
-        # Парсим данные клиента
         if isinstance(client_tg_raw, str):
             client_tg = json.loads(client_tg_raw)
         else:
             client_tg = client_tg_raw
 
         client_chat_id = client_tg.get("id")
+        if not client_chat_id: return
 
-        if not client_chat_id:
-            return
-
-        # Форматируем дату и время
-        # Supabase возвращает ISO формат (например: 2026-02-16T10:00:00+00:00)
         start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
-
-        # Корректируем время (если нужно) или выводим как есть (UTC).
-        # В идеале хранить таймзону салона, но пока выведем как в базе + смещение если нужно.
-        # Для простоты пока выводим то, что в базе (предполагаем, что оно корректно отображается)
         date_str = start_dt.strftime('%d.%m.%Y')
         time_str = start_dt.strftime('%H:%M')
-
         salon_name = appt['salons']['name'] if appt.get('salons') else "Салон"
         service_title = appt['services']['title'] if appt.get('services') else "Услуга"
         salon_phone = appt['salons'].get('phone', '') if appt.get('salons') else ""
@@ -214,13 +209,9 @@ def send_client_confirmation(appointment_id: str):
             f"📅 <b>Дата:</b> {date_str}\n"
             f"⏰ <b>Время:</b> {time_str}\n"
         )
-
-        if salon_phone:
-            msg += f"\n📞 <b>Телефон для связи:</b> {salon_phone}"
-
+        if salon_phone: msg += f"\n📞 <b>Телефон для связи:</b> {salon_phone}"
         bot.send_message(client_chat_id, msg, parse_mode="HTML")
         logger.info(f"Уведомление отправлено клиенту: {client_chat_id}")
-
     except Exception as e:
         logger.error(f"Ошибка отправки уведомления клиенту: {e}")
 
@@ -229,7 +220,7 @@ def send_client_confirmation(appointment_id: str):
 
 @app.get("/")
 def health_check():
-    return {"status": "active", "service": "Grooming Backend v2.3"}
+    return {"status": "active", "service": "Grooming Backend v2.4"}
 
 
 @app.get("/api/user-status/{tg_id}")
@@ -248,7 +239,6 @@ async def check_user_status(tg_id: int):
 async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks):
     try:
         logger.info(f"Запрос на запись: {data.client.name}")
-
         try:
             start_dt = datetime.fromisoformat(f"{data.date}T{data.time}:00")
         except ValueError:
@@ -257,11 +247,9 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
         duration = data.service.duration_minutes or 30
         end_dt = start_dt + timedelta(minutes=duration)
 
-        # 1. Проверка занятости
         if check_overlap(data.salonId, start_dt, end_dt):
             raise HTTPException(status_code=409, detail="Это время уже занято")
 
-        # 2. Подготовка данных
         client_tg_json = None
         if data.client.telegram_user:
             client_tg_json = json.dumps(data.client.telegram_user)
@@ -278,18 +266,11 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
             "end_time": end_dt.isoformat(),
             "status": "pending"
         }
-
-        # 3. Запись в БД
         res = supabase.table("appointments").insert(insert_payload).execute()
+        if not res.data: raise HTTPException(status_code=500, detail="Ошибка базы данных")
 
-        if not res.data:
-            raise HTTPException(status_code=500, detail="Ошибка базы данных")
-
-        # 4. Уведомление МАСТЕРУ
         background_tasks.add_task(send_telegram_notification_task, data.salonId, data, start_dt)
-
         return {"success": True, "id": res.data[0]['id']}
-
     except HTTPException as he:
         raise he
     except Exception as e:
@@ -300,19 +281,59 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
 @app.patch("/api/appointments/{appointment_id}/status")
 async def update_appointment_status(appointment_id: str, payload: StatusUpdate, background_tasks: BackgroundTasks):
     try:
-        # 1. Обновляем статус
         res = supabase.table("appointments").update({"status": payload.status}).eq("id", appointment_id).execute()
+        if not res.data: raise HTTPException(status_code=404, detail="Запись не найдена")
 
-        if not res.data:
-            raise HTTPException(status_code=404, detail="Запись не найдена")
-
-        # 2. Если статус CONFIRMED, отправляем уведомление КЛИЕНТУ фоном
         if payload.status == 'confirmed':
             background_tasks.add_task(send_client_confirmation, appointment_id)
-
         return {"success": True, "data": res.data[0]}
     except Exception as e:
         logger.error(f"Error updating status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 👇 НОВЫЕ ЭНДПОИНТЫ ДЛЯ РЕФАКТОРИНГА 👇
+
+# 1. Обновление профиля салона
+@app.patch("/api/salons/{salon_id}")
+async def update_salon_profile(salon_id: str, payload: SalonUpdate):
+    try:
+        # exclude_unset=True означает, что мы обновляем только те поля, которые прислали
+        data = payload.dict(exclude_unset=True)
+        res = supabase.table("salons").update(data).eq("id", salon_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Салон не найден")
+        return {"success": True, "data": res.data[0]}
+    except Exception as e:
+        logger.error(f"Error updating salon: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 2. Создание услуги
+@app.post("/api/services")
+async def create_service(payload: ServiceCreate):
+    try:
+        data = payload.dict()
+        res = supabase.table("services").insert(data).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Ошибка создания услуги")
+        return {"success": True, "data": res.data[0]}
+    except Exception as e:
+        logger.error(f"Error creating service: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 3. Удаление услуги
+@app.delete("/api/services/{service_id}")
+async def delete_service(service_id: str):
+    try:
+        res = supabase.table("services").delete().eq("id", service_id).execute()
+        # Supabase при удалении возвращает удаленную запись
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Услуга не найдена")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Error deleting service: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
