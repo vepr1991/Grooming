@@ -63,8 +63,10 @@ export function MasterDashboardPage() {
 
   // Modals state
   const [isAdding, setIsAdding] = useState(false);
-  const [isAddingBlock, setIsAddingBlock] = useState(false); // 👈 Новое состояние для перерыва в календаре
+  const [isAddingBlock, setIsAddingBlock] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 👇 Состояние для ID удаляемого блока
   const [blockToDelete, setBlockToDelete] = useState<string | null>(null);
 
   const [newApp, setNewApp] = useState({
@@ -107,7 +109,20 @@ export function MasterDashboardPage() {
   useEffect(() => { fetchServices(); fetchAppointments(); }, [salonId]);
   useEffect(() => { if (view === 'stats') fetchStats(); }, [view]);
 
-  // Чистая функция добавления перерыва
+  // 👇 ТА САМАЯ ФУНКЦИЯ, КОТОРОЙ НЕ ХВАТАЛО
+  const confirmDeleteBlock = async () => {
+    if (!blockToDelete) return;
+    try {
+      await api.updateAppointmentStatus(blockToDelete, 'canceled');
+      toast.success("Перерыв удален");
+      fetchAppointments();
+    } catch(e) {
+      toast.error("Ошибка удаления");
+    } finally {
+      setBlockToDelete(null);
+    }
+  };
+
   const handleAddBlock = async () => {
       if (!salonId) return;
       setIsSubmitting(true);
@@ -206,7 +221,6 @@ export function MasterDashboardPage() {
         <div className="grid grid-cols-7 text-center py-2 text-[11px] font-bold text-[#8E8E93]">{['П', 'В', 'С', 'Ч', 'П', 'С', 'В'].map(d => <span key={d}>{d}</span>)}</div>
         <div className="grid grid-cols-7 gap-y-1">{days}</div>
 
-        {/* Кнопка блокировки под календарем */}
         <button
           onClick={() => setIsAddingBlock(true)}
           className="w-full mt-4 flex items-center justify-center gap-2 py-3 bg-[#F2F2F7] text-[#007AFF] rounded-xl text-[14px] font-bold active:scale-95 transition-all"
@@ -241,6 +255,7 @@ export function MasterDashboardPage() {
 
   return (
     <div className="space-y-6 pt-10 pb-28 bg-[#F2F2F7] min-h-screen">
+      {/* Шапка */}
       <div className="px-5 flex justify-between items-end">
         <h1 className="text-[32px] font-extrabold">{view === 'stats' ? 'Финансы' : 'Записи'}</h1>
         <div className="flex gap-2">
@@ -249,6 +264,7 @@ export function MasterDashboardPage() {
         </div>
       </div>
 
+      {/* Переключатель вкладок */}
       <div className="px-5">
         <div className="flex bg-[#E3E3E8] p-1 rounded-xl shadow-sm">
           <button onClick={() => setView('agenda')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg ${view === 'agenda' ? 'bg-white shadow-sm' : 'text-[#8E8E93]'}`}>Список</button>
@@ -263,7 +279,9 @@ export function MasterDashboardPage() {
             <button onClick={() => setFilter('pending')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg ${filter === 'pending' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>Ожидают</button>
             <button onClick={() => setFilter('history')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg ${filter === 'history' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>История</button>
           </div>
-          <div className="space-y-3">{filteredApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} onDeleteBlock={(id) => setBlockToDelete(id)} />)}</div>
+          <div className="space-y-3">
+             {filteredApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} onDeleteBlock={(id) => setBlockToDelete(id)} />)}
+          </div>
         </div>
       )}
 
@@ -279,11 +297,15 @@ export function MasterDashboardPage() {
 
       {view === 'stats' && renderStats()}
 
-      {/* МОДАЛКА: НОВАЯ ЗАПИСЬ */}
+      {/* Модалка записи */}
       {isAdding && (
         <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-end justify-center">
-          <div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[24px] h-[85vh] flex flex-col overflow-hidden">
-            <div className="p-4 border-b flex justify-between items-center bg-white"><button onClick={() => setIsAdding(false)} className="text-[#007AFF]">Отмена</button><span className="font-bold">Новый клиент</span><button onClick={handleManualAdd} className="font-bold text-[#007AFF]">{isSubmitting ? "..." : "Записать"}</button></div>
+          <div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[24px] h-[85vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom">
+            <div className="p-4 border-b flex justify-between items-center bg-white">
+              <button onClick={() => setIsAdding(false)} className="text-[#007AFF]">Отмена</button>
+              <span className="font-bold">Новый клиент</span>
+              <button onClick={handleManualAdd} className="font-bold text-[#007AFF]">{isSubmitting ? "..." : "Записать"}</button>
+            </div>
             <div className="px-5 mt-6 space-y-4">
                <div className="bg-white p-4 rounded-xl space-y-3"><input placeholder="Имя" className="w-full text-lg outline-none" value={newApp.client_name} onChange={e => setNewApp({...newApp, client_name: e.target.value})} /><PhoneInput value={newApp.client_phone} onChange={val => setNewApp({...newApp, client_phone: val})} /></div>
                <div className="grid grid-cols-2 gap-3"><input placeholder="Кличка" className="bg-white p-3 rounded-xl outline-none" value={newApp.pet_name} onChange={e => setNewApp({...newApp, pet_name: e.target.value})} /><input placeholder="Порода" className="bg-white p-3 rounded-xl outline-none" value={newApp.pet_breed} onChange={e => setNewApp({...newApp, pet_breed: e.target.value})} /></div>
@@ -294,10 +316,10 @@ export function MasterDashboardPage() {
         </div>
       )}
 
-      {/* МОДАЛКА: ПЕРЕРЫВ (ПО ЦЕНТРУ) */}
+      {/* Модалка перерыва */}
       {isAddingBlock && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-            <div className="bg-white w-full max-w-sm p-6 rounded-[24px] shadow-2xl">
+            <div className="bg-white w-full max-w-sm p-6 rounded-[24px] shadow-2xl animate-in zoom-in-95">
                 <h3 className="text-xl font-bold text-center mb-4 flex items-center justify-center gap-2"><Coffee /> Перерыв</h3>
                 <div className="space-y-4">
                     <div className="flex flex-col gap-1">
@@ -319,12 +341,12 @@ export function MasterDashboardPage() {
         </div>
       )}
 
-      {/* УДАЛЕНИЕ ПЕРЕРЫВА */}
+      {/* Модалка удаления перерыва */}
       {blockToDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
             <div className="bg-white w-full max-w-sm p-6 rounded-[24px] shadow-2xl">
                 <div className="w-12 h-12 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><Trash2 size={24} /></div>
-                <h3 className="text-xl font-bold text-center mb-2">Удалить перерыв?</h3>
+                <h3 className="text-xl font-bold text-center mb-2 text-black">Удалить перерыв?</h3>
                 <div className="flex gap-3 mt-6">
                     <button onClick={() => setBlockToDelete(null)} className="flex-1 py-3 bg-[#F2F2F7] rounded-xl font-bold">Отмена</button>
                     <button onClick={confirmDeleteBlock} className="flex-1 py-3 bg-[#FF3B30] text-white rounded-xl font-bold">Удалить</button>
@@ -348,14 +370,22 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
                 <div className="w-[1px] h-8 bg-slate-300" />
                 <div className="flex items-center gap-2 text-[#8E8E93] font-bold"><Coffee size={18} /> Перерыв</div>
             </div>
-            <button onClick={() => onDeleteBlock(app.id)} className="w-8 h-8 flex items-center justify-center bg-white rounded-full text-[#FF3B30] shadow-sm"><Trash2 size={16} /></button>
+            <button onClick={() => onDeleteBlock(app.id)} className="w-8 h-8 flex items-center justify-center bg-white rounded-full text-[#FF3B30] shadow-sm active:scale-90 transition-transform"><Trash2 size={16} /></button>
         </div>
       );
   }
 
   const sInfo = Array.isArray(app.services) ? app.services[0] : app.services;
   const sTime = parseDate(app.start_time);
-  const cfg: any = { pending: { bg: '#FFF4D6', text: '#855E00', lbl: 'НОВАЯ' }, confirmed: { bg: '#E3F2FF', text: '#007AFF', lbl: 'ПРИНЯТА' }, completed: { bg: '#E8F5E9', text: '#2E7D32', lbl: 'ГОТОВО' }, canceled: { bg: '#FFEBEE', text: '#C62828', lbl: 'ОТМЕНА' } }[app.status];
+  const cfg: any = {
+    pending: { bg: '#FFF4D6', text: '#855E00', lbl: 'НОВАЯ' },
+    confirmed: { bg: '#E3F2FF', text: '#007AFF', lbl: 'ПРИНЯТА' },
+    completed: { bg: '#E8F5E9', text: '#2E7D32', lbl: 'ГОТОВО' },
+    canceled: { bg: '#FFEBEE', text: '#C62828', lbl: 'ОТМЕНА' }
+  }[app.status];
+
+  // Безопасное форматирование телефона
+  const cleanPhone = app.client_phone?.replace(/[^0-9+]/g, '') || '';
 
   let tgUsername = null;
   if (app.client_tg_user) {
@@ -364,16 +394,21 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
         tgUsername = u?.username;
     } catch(e) {}
   }
-  const cleanPhone = app.client_phone?.replace(/[^0-9+]/g, '') || '';
   const chatLink = tgUsername ? `https://t.me/${tgUsername}` : `https://wa.me/${cleanPhone}`;
 
   return (
     <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
       <div className="p-4 flex items-center justify-between" onClick={() => setEx(!ex)}>
         <div className="flex items-center gap-4">
-          <div className="text-center shrink-0 w-12"><div className="font-bold text-lg">{format(sTime, 'HH:mm')}</div><div className="text-[10px] uppercase text-slate-400">{format(sTime, 'd MMM', { locale: ru })}</div></div>
+          <div className="text-center shrink-0 w-12">
+            <div className="font-bold text-lg">{format(sTime, 'HH:mm')}</div>
+            <div className="text-[10px] uppercase text-slate-400">{format(sTime, 'd MMM', { locale: ru })}</div>
+          </div>
           <div className="w-[1px] h-8 bg-slate-100" />
-          <div><div className="font-bold">{app.pet_name || 'Без имени'}</div><div className="text-xs text-slate-400">{sInfo?.title || 'Услуга'}</div></div>
+          <div>
+            <div className="font-bold">{app.pet_name || 'Без имени'}</div>
+            <div className="text-xs text-slate-400">{sInfo?.title || 'Услуга'}</div>
+          </div>
         </div>
         <div className="flex items-center gap-2 ml-2 shrink-0">
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: cfg.bg, color: cfg.text }}>{cfg.lbl}</span>
@@ -383,22 +418,26 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
       {ex && (
         <div className="px-4 pb-4 space-y-4 animate-in slide-in-from-top-1">
           <div className="pt-3 border-t flex gap-4">
-            <div className="w-16 h-16 rounded-xl bg-slate-50 overflow-hidden shrink-0">{sInfo?.image_url ? <img src={sInfo.image_url} className="w-full h-full object-cover" /> : <Scissors className="m-auto mt-4 opacity-10" />}</div>
+            <div className="w-16 h-16 rounded-xl bg-slate-50 overflow-hidden shrink-0">
+              {sInfo?.image_url ? <img src={sInfo.image_url} className="w-full h-full object-cover" /> : <Scissors className="m-auto mt-4 opacity-10" />}
+            </div>
             <div className="space-y-1">
               <div className="font-bold text-sm">{app.pet_breed}</div>
               <div className="text-xs bg-slate-50 p-2 rounded-lg">{sInfo?.title} • {sInfo?.price} ₸</div>
               <div className="text-xs text-slate-400">Владелец: {app.client_name}</div>
             </div>
           </div>
+
           {app.client_phone && (
             <div className="flex gap-2">
-               <button onClick={() => { navigator.clipboard.writeText(app.client_phone); toast.success("Скопировано"); window.location.href=`tel:${cleanPhone}`; }} className="flex-1 bg-slate-50 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm"><Copy size={14}/> {app.client_phone}</button>
-               <a href={chatLink} target="_blank" className={`w-14 flex items-center justify-center rounded-xl ${tgUsername ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}><MessageSquare size={20}/></a>
+               <button onClick={() => { navigator.clipboard.writeText(app.client_phone); toast.success("Скопировано"); window.location.href=`tel:${cleanPhone}`; }} className="flex-1 bg-slate-50 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm active:scale-95"><Copy size={14}/> {app.client_phone}</button>
+               <a href={chatLink} target="_blank" className="w-14 flex items-center justify-center rounded-xl bg-[#E3F2FF] text-[#007AFF] active:scale-95 transition-transform"><MessageSquare size={20}/></a>
             </div>
           )}
+
           <div className="flex gap-2 border-t pt-3">
-            {app.status === 'pending' && <><button onClick={() => onStatusUpdate(app.id, 'confirmed')} className="flex-1 bg-[#007AFF] text-white py-2 rounded-xl font-bold">Принять</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="flex-1 bg-slate-50 text-red-500 py-2 rounded-xl font-bold">Отмена</button></>}
-            {app.status === 'confirmed' && <><button onClick={() => onStatusUpdate(app.id, 'completed')} className="flex-1 bg-green-600 text-white py-2 rounded-xl font-bold">Готово</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="flex-1 bg-slate-50 text-red-500 py-2 rounded-xl font-bold">Отмена</button></>}
+            {app.status === 'pending' && <><button onClick={() => onStatusUpdate(app.id, 'confirmed')} className="flex-1 bg-[#007AFF] text-white py-2 rounded-xl font-bold active:scale-95">Принять</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="flex-1 bg-slate-50 text-red-500 py-2 rounded-xl font-bold active:scale-95">Отмена</button></>}
+            {app.status === 'confirmed' && <><button onClick={() => onStatusUpdate(app.id, 'completed')} className="flex-1 bg-green-600 text-white py-2 rounded-xl font-bold active:scale-95">Готово</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="flex-1 bg-slate-50 text-red-500 py-2 rounded-xl font-bold active:scale-95">Отмена</button></>}
           </div>
         </div>
       )}
