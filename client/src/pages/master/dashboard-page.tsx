@@ -108,14 +108,26 @@ export function MasterDashboardPage() {
     if (!selectedS || !salonId) return;
     setIsSubmitting(true);
     try {
-      await api.createBooking({ salonId, service: selectedS, date: newApp.date, time: newApp.time, client: { name: newApp.client_name, phone: newApp.client_phone }, pet: { name: newApp.pet_name, petBreed: newApp.pet_breed } });
+      await api.createBooking({
+        salonId,
+        service: { id: selectedS.id, title: selectedS.title, duration_minutes: selectedS.duration_minutes },
+        date: newApp.date,
+        time: newApp.time,
+        client: { name: newApp.client_name, phone: newApp.client_phone },
+        pet: { name: newApp.pet_name, petBreed: newApp.pet_breed }
+      });
       toast.success("Записано!"); setIsAdding(false); fetchAppointments();
     } catch (e: any) { toast.error("Ошибка"); } finally { setIsSubmitting(false); }
   };
 
   const updateStatus = async (id: string, newStatus: Appointment['status']) => {
     const tId = toast.loading("Обновление...");
-    try { await api.updateAppointmentStatus(id, newStatus); toast.success("Готово", { id: tId }); fetchAppointments(); if(view === 'stats') fetchStats(); }
+    try {
+      await api.updateAppointmentStatus(id, newStatus);
+      toast.success("Готово", { id: tId });
+      fetchAppointments();
+      if(view === 'stats') fetchStats();
+    }
     catch (e) { toast.error("Ошибка", { id: tId }); }
   };
 
@@ -126,15 +138,29 @@ export function MasterDashboardPage() {
     const year = currentMonth.getFullYear(), month = currentMonth.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const offset = (new Date(year, month, 1).getDay() || 7) - 1;
-    const days = [];
+
+    // 👇 ИСПРАВЛЕНИЕ: Явное указание типа React.ReactNode[]
+    const days: React.ReactNode[] = [];
+
     for (let i = 0; i < offset; i++) days.push(<div key={`p-${i}`} className="h-12" />);
     for (let d = 1; d <= daysInMonth; d++) {
       const dObj = new Date(year, month, d), isSel = isSameDay(dObj, selectedDate), hasP = appointments.some(a => isSameDay(parseDate(a.start_time), dObj) && a.status === 'pending');
-      days.push(<div key={d} className="relative flex items-center justify-center h-12 cursor-pointer" onClick={() => setSelectedDate(dObj)}><div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold ${isSel ? 'bg-[#007AFF] text-white' : isToday(dObj) ? 'text-[#007AFF] bg-[#007AFF]/10' : 'text-black'}`}>{d}</div>{hasP && !isSel && <div className="absolute bottom-1 w-1.5 h-1.5 bg-orange-500 rounded-full" />}</div>);
+      days.push(
+        <div key={d} className="relative flex items-center justify-center h-12 cursor-pointer" onClick={() => setSelectedDate(dObj)}>
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold ${isSel ? 'bg-[#007AFF] text-white' : isToday(dObj) ? 'text-[#007AFF] bg-[#007AFF]/10' : 'text-black'}`}>{d}</div>
+          {hasP && !isSel && <div className="absolute bottom-1 w-1.5 h-1.5 bg-orange-500 rounded-full" />}
+        </div>
+      );
     }
     return (
       <div className="bg-white rounded-[16px] p-2 shadow-sm border border-slate-100 mx-5 mt-2">
-        <div className="flex justify-between items-center px-4 py-2"><span className="font-bold text-lg capitalize">{format(currentMonth, 'LLLL yyyy', { locale: ru })}</span><div className="flex gap-2"><button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}><ChevronLeft /></button><button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}><ChevronRight /></button></div></div>
+        <div className="flex justify-between items-center px-4 py-2">
+          <span className="font-bold text-lg capitalize">{format(currentMonth, 'LLLL yyyy', { locale: ru })}</span>
+          <div className="flex gap-2">
+            <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}><ChevronLeft /></button>
+            <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}><ChevronRight /></button>
+          </div>
+        </div>
         <div className="grid grid-cols-7 text-center py-2 text-[11px] font-bold text-[#8E8E93]">{['П', 'В', 'С', 'Ч', 'П', 'С', 'В'].map(d => <span key={d}>{d}</span>)}</div>
         <div className="grid grid-cols-7 gap-y-1">{days}</div>
       </div>
@@ -154,7 +180,6 @@ export function MasterDashboardPage() {
           <div className="bg-white p-4 rounded-[20px] border shadow-sm flex flex-col justify-between h-28"><div className="flex items-center gap-2 text-[#34C759]"><CheckCircle2 size={18}/><span className="text-[12px] font-bold text-[#8E8E93]">ГОТОВО</span></div><span className="text-[28px] font-black">{stats.completed_count}</span></div>
           <div className="bg-white p-4 rounded-[20px] border shadow-sm flex flex-col justify-between h-28"><div className="flex items-center gap-2 text-[#FF3B30]"><Ban size={18}/><span className="text-[12px] font-bold text-[#8E8E93]">ОТМЕНЫ</span></div><span className="text-[28px] font-black">{stats.canceled_count}</span></div>
         </div>
-        {/* График */}
         <div className="bg-white p-5 rounded-[24px] border shadow-sm">
           <div className="flex items-center gap-2 mb-6"><BarChart3 size={20}/><h3 className="font-bold">Динамика</h3></div>
           <div className="flex items-end gap-2 h-32 overflow-x-auto no-scrollbar pb-2">
@@ -172,7 +197,6 @@ export function MasterDashboardPage() {
             })}
           </div>
         </div>
-        {/* Топ услуг */}
         <div className="bg-white p-5 rounded-[24px] border shadow-sm">
           <div className="flex items-center gap-2 mb-4"><TrendingUp className="text-orange-500" /><h3 className="font-bold">Популярные услуги</h3></div>
           <div className="space-y-3">
@@ -192,11 +216,26 @@ export function MasterDashboardPage() {
     <div className="space-y-6 pt-10 pb-28 bg-[#F2F2F7] min-h-screen">
       <div className="px-5 flex justify-between items-end mb-4"><h1 className="text-[32px] font-extrabold">{view === 'stats' ? 'Финансы' : 'Записи'}</h1><div className="flex gap-2">{view !== 'stats' && <button onClick={() => setIsAdding(true)} className="w-10 h-10 bg-[#007AFF] text-white rounded-full flex items-center justify-center shadow-lg"><Plus /></button>}<button onClick={loadAllData} className="w-10 h-10 bg-white border rounded-full flex items-center justify-center shadow-sm"><RefreshCcw className={loading ? "animate-spin" : ""} /></button></div></div>
       <div className="px-5"><div className="flex bg-[#E3E3E8] p-1 rounded-xl shadow-sm"><button onClick={() => setView('agenda')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg ${view === 'agenda' ? 'bg-white shadow-sm' : 'text-[#8E8E93]'}`}>Список</button><button onClick={() => setView('calendar')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg ${view === 'calendar' ? 'bg-white shadow-sm' : 'text-[#8E8E93]'}`}>Календарь</button><button onClick={() => setView('stats')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg ${view === 'stats' ? 'bg-white shadow-sm' : 'text-[#8E8E93]'}`}>Финансы</button></div></div>
-      {view === 'agenda' && <div className="px-5 space-y-4"><div className="flex bg-white/50 p-1 rounded-xl shadow-sm"><button onClick={() => setFilter('pending')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg ${filter === 'pending' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>Ожидают</button><button onClick={() => setFilter('history')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg ${filter === 'history' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>История</button></div><div className="space-y-3">{loading ? <p className="text-center py-10">Загрузка...</p> : filteredApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} />)}</div></div>}
+      {view === 'agenda' && (
+        <div className="px-5 space-y-4">
+          <div className="flex bg-white/50 p-1 rounded-xl shadow-sm"><button onClick={() => setFilter('pending')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg ${filter === 'pending' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>Ожидают</button><button onClick={() => setFilter('history')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg ${filter === 'history' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>История</button></div>
+          <div className="space-y-3">{loading ? <p className="text-center py-10">Загрузка...</p> : filteredApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} />)}</div>
+        </div>
+      )}
       {view === 'calendar' && <div className="space-y-4">{renderCalendar()}<div className="px-5 space-y-3"><h2 className="text-[13px] font-bold text-[#8E8E93] uppercase px-1">{format(selectedDate, 'd MMMM', { locale: ru })}</h2>{calendarPendingApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} />)}</div></div>}
       {view === 'stats' && renderStats()}
       {isAdding && (
-        <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-end justify-center"><div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[24px] h-[90vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom"><div className="p-4 border-b flex justify-between items-center bg-white"><button onClick={() => setIsAdding(false)} className="text-[#007AFF]">Отмена</button><span className="font-bold">Новая запись</span><button onClick={handleManualAdd} className="font-bold text-[#007AFF]">{isSubmitting ? "..." : "Готово"}</button></div><div className="p-5 space-y-4 overflow-y-auto"><div className="bg-white p-4 rounded-xl space-y-3"><input placeholder="Имя" className="w-full text-lg outline-none" value={newApp.client_name} onChange={e => setNewApp({...newApp, client_name: e.target.value})} /><PhoneInput value={newApp.client_phone} onChange={val => setNewApp({...newApp, client_phone: val})} /></div><div className="grid grid-cols-2 gap-3"><div className="bg-white p-3 rounded-xl"><input placeholder="Кличка" className="w-full outline-none" value={newApp.pet_name} onChange={e => setNewApp({...newApp, pet_name: e.target.value})} /></div><div className="bg-white p-3 rounded-xl"><input placeholder="Порода" className="w-full outline-none" value={newApp.pet_breed} onChange={e => setNewApp({...newApp, pet_breed: e.target.value})} /></div></div><div className="bg-white p-3 rounded-xl"><select className="w-full outline-none" value={newApp.service_id} onChange={e => setNewApp({...newApp, service_id: e.target.value})}><option value="">Выбрать услугу</option>{services.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}</select></div><div className="grid grid-cols-2 gap-3"><input type="date" className="p-3 rounded-xl outline-none" value={newApp.date} onChange={e => setNewApp({...newApp, date: e.target.value})} /><input type="time" className="p-3 rounded-xl outline-none" value={newApp.time} onChange={e => setNewApp({...newApp, time: e.target.value})} /></div></div></div></div>
+        <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-end justify-center">
+          <div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[24px] h-[90vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom">
+            <div className="p-4 border-b flex justify-between items-center bg-white"><button onClick={() => setIsAdding(false)} className="text-[#007AFF]">Отмена</button><span className="font-bold">Новая запись</span><button onClick={handleManualAdd} className="font-bold text-[#007AFF]">{isSubmitting ? "..." : "Готово"}</button></div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div className="bg-white p-4 rounded-xl space-y-3"><input placeholder="Имя" className="w-full text-lg outline-none" value={newApp.client_name} onChange={e => setNewApp({...newApp, client_name: e.target.value})} /><PhoneInput value={newApp.client_phone} onChange={val => setNewApp({...newApp, client_phone: val})} /></div>
+              <div className="grid grid-cols-2 gap-3"><div className="bg-white p-3 rounded-xl"><input placeholder="Кличка" className="w-full outline-none" value={newApp.pet_name} onChange={e => setNewApp({...newApp, pet_name: e.target.value})} /></div><div className="bg-white p-3 rounded-xl"><input placeholder="Порода" className="w-full outline-none" value={newApp.pet_breed} onChange={e => setNewApp({...newApp, pet_breed: e.target.value})} /></div></div>
+              <div className="bg-white p-3 rounded-xl"><select className="w-full outline-none" value={newApp.service_id} onChange={e => setNewApp({...newApp, service_id: e.target.value})}><option value="">Выбрать услугу</option>{services.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}</select></div>
+              <div className="grid grid-cols-2 gap-3"><input type="date" className="p-3 rounded-xl outline-none" value={newApp.date} onChange={e => setNewApp({...newApp, date: e.target.value})} /><input type="time" className="p-3 rounded-xl outline-none" value={newApp.time} onChange={e => setNewApp({...newApp, time: e.target.value})} /></div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
