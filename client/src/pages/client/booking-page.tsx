@@ -11,7 +11,9 @@ import {
   Loader2,
   Image as ImageIcon,
   X,
-  Check
+  Check,
+  Calendar,
+  Wallet
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -39,7 +41,7 @@ type Service = {
   price: number;
   duration_minutes: number;
   image_url: string;
-  description?: string; // 👈 Добавили описание
+  description?: string;
 };
 
 export function ClientBookingPage() {
@@ -52,7 +54,7 @@ export function ClientBookingPage() {
   const [slotsLoading, setSlotsLoading] = useState(false);
 
   // Booking State
-  const [selectedServices, setSelectedServices] = useState<Service[]>([]); // 👈 Теперь массив!
+  const [selectedServices, setSelectedServices] = useState<Service[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -147,7 +149,6 @@ export function ClientBookingPage() {
     let current = parse(dayConfig.hours.start, 'HH:mm', selectedDate);
     const endWorkDay = parse(dayConfig.hours.end, 'HH:mm', selectedDate);
 
-    // Считаем общую длительность всех выбранных услуг
     const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0);
 
     while (isBefore(current, endWorkDay)) {
@@ -161,9 +162,7 @@ export function ClientBookingPage() {
         return slotStart < appEnd && slotEnd > appStart;
       });
 
-      // Также проверяем, не выходит ли конец услуги за конец рабочего дня
       const isTooLate = isBefore(endWorkDay, slotEnd);
-
       const isPast = isSameDay(selectedDate, new Date()) && isBefore(current, new Date());
 
       if (!isBusy && !isPast && !isTooLate) slots.push(timeStr);
@@ -191,7 +190,7 @@ export function ClientBookingPage() {
     try {
       const payload = {
         salonId,
-        services: selectedServices, // 👈 Отправляем массив
+        services: selectedServices,
         date: format(selectedDate, 'yyyy-MM-dd'),
         time: selectedTime,
         client: {
@@ -291,7 +290,6 @@ export function ClientBookingPage() {
                             <div>
                                 <h4 className="text-[17px] font-bold text-black leading-tight">{s.title}</h4>
                                 <p className="text-[13px] text-[#8E8E93] mt-1 font-medium">{s.duration_minutes} мин</p>
-                                {/* 👇 ОПИСАНИЕ УСЛУГИ */}
                                 {s.description && (
                                     <p className="text-[12px] text-[#3A3A3C] mt-2 leading-tight opacity-80 line-clamp-2">{s.description}</p>
                                 )}
@@ -359,29 +357,48 @@ export function ClientBookingPage() {
           </div>
         )}
 
+        {/* 👇 ОБНОВЛЕННЫЙ ШАГ: DETAILS (КРАСИВЫЙ ЧЕК) */}
         {step === 'details' && (
           <div className="p-5 space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-            <div className="bg-white rounded-[24px] p-5 border border-slate-100 space-y-4 shadow-sm">
-              <div className="flex items-start gap-4">
-                <div className="bg-[#007AFF]/10 p-3 rounded-[16px] text-[#007AFF] mt-1"><Clock size={24} /></div>
-                <div className="flex-1">
-                  <p className="text-[13px] text-[#8E8E93] font-bold uppercase tracking-tight mb-1">Ваша запись</p>
-                  {/* Перечисляем выбранные услуги */}
-                  <div className="flex flex-col gap-1 mb-2">
-                      {selectedServices.map(s => (
-                          <div key={s.id} className="flex justify-between text-[15px] font-medium">
-                              <span>{s.title}</span>
-                              <span className="text-[#8E8E93]">{s.price} ₸</span>
-                          </div>
-                      ))}
-                  </div>
-                  <div className="h-[1px] bg-slate-100 my-2" />
-                  <p className="text-[14px] font-bold text-[#007AFF] mt-0.5">
-                    {format(selectedDate, 'd MMMM', { locale: ru })} в {selectedTime}
-                  </p>
-                  <p className="text-[13px] text-black font-black mt-1">Итого: {totalAmount} ₸</p>
+            <div className="bg-white rounded-[24px] p-5 border border-slate-100 space-y-4 shadow-sm relative overflow-hidden">
+                {/* Декоративный элемент сверху "чека" */}
+                <div className="absolute top-0 left-0 right-0 h-1.5 bg-[repeating-linear-gradient(45deg,#F2F2F7,#F2F2F7_10px,#fff_10px,#fff_20px)] opacity-50"></div>
+
+                <div className="flex justify-between items-start pt-2">
+                    <div>
+                        <p className="text-[12px] text-[#8E8E93] font-bold uppercase tracking-wide">Дата и время</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <Calendar size={18} className="text-[#007AFF]" />
+                            <span className="text-[17px] font-bold text-black">{format(selectedDate, 'd MMMM', { locale: ru })}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                            <Clock size={18} className="text-[#007AFF]" />
+                            <span className="text-[17px] font-bold text-black">{selectedTime}</span>
+                        </div>
+                    </div>
                 </div>
-              </div>
+
+                <div className="bg-[#F9F9F9] rounded-xl p-3 border border-slate-50">
+                    <p className="text-[11px] text-[#8E8E93] font-bold uppercase tracking-wide mb-2 pl-1">Выбранные услуги</p>
+
+                    {/* Список с прокруткой, если услуг много */}
+                    <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
+                        {selectedServices.map(s => (
+                            <div key={s.id} className="flex justify-between items-center text-[14px]">
+                                <span className="font-medium text-slate-700 leading-tight pr-2">{s.title}</span>
+                                <span className="font-bold text-black whitespace-nowrap">{s.price} ₸</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200">
+                    <div className="flex items-center gap-2 text-[#8E8E93]">
+                        <Wallet size={18} />
+                        <span className="text-[15px] font-medium">Итого к оплате</span>
+                    </div>
+                    <span className="text-[22px] font-black text-[#007AFF]">{totalAmount} ₸</span>
+                </div>
             </div>
 
             <div className="space-y-4">
