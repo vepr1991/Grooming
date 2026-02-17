@@ -92,5 +92,9 @@ export const api = {
       canceled_count: number;
       today_revenue: number;
       daily_stats: Array<{date: string, value: number}>
-    }>(`/api/analytics/${salonId}`)
-}; // 👈 Убедись, что здесь только одна закрывающая скобка и точка с запятой
+    }>(`/api/analytics/${salonId}`),
+
+  // 🟢 CRM (Новый метод)
+  getClients: (salonId: string) =>
+    request<any[]>(`/api/clients/${salonId}`)
+};

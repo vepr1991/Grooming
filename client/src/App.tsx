@@ -10,6 +10,7 @@ import { MasterDashboardPage } from "@/pages/master/dashboard-page";
 import { MasterServicesPage } from "@/pages/master/services-page";
 import { MasterProfilePage } from "@/pages/master/profile-page";
 import { MasterRegisterPage } from "@/pages/master/register-page";
+import { MasterClientsPage } from "@/pages/master/clients-page"; // 👈 Импорт
 import { ClientBookingPage } from "@/pages/client/booking-page";
 
 // Страница выбора роли
@@ -85,12 +86,11 @@ function App() {
 
           {/* Панель мастера */}
           <Route path="/master" element={<MasterLayout />}>
-            {/* 👇 ВАЖНО: Этот роут открывает дашборд по умолчанию при входе в /master */}
             <Route index element={<MasterDashboardPage />} />
-
             <Route path="dashboard" element={<MasterDashboardPage />} />
             <Route path="services" element={<MasterServicesPage />} />
             <Route path="profile" element={<MasterProfilePage />} />
+            <Route path="clients" element={<MasterClientsPage />} /> {/* 👈 Новый маршрут */}
           </Route>
 
           {/* Запись клиента */}
