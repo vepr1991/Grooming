@@ -109,7 +109,6 @@ export function MasterDashboardPage() {
   useEffect(() => { fetchServices(); fetchAppointments(); }, [salonId]);
   useEffect(() => { if (view === 'stats') fetchStats(); }, [view]);
 
-  // 👇 ТА САМАЯ ФУНКЦИЯ, КОТОРОЙ НЕ ХВАТАЛО
   const confirmDeleteBlock = async () => {
     if (!blockToDelete) return;
     try {
@@ -234,7 +233,7 @@ export function MasterDashboardPage() {
   const renderStats = () => {
     if (!stats) return <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-[#007AFF]" /></div>;
     return (
-      <div className="px-5 space-y-4">
+      <div className="px-5 space-y-4 animate-in fade-in duration-500">
         <div className="bg-gradient-to-br from-[#007AFF] to-[#0055FF] rounded-[24px] p-6 text-white shadow-lg">
           <div className="flex items-center justify-between opacity-80 mb-1"><span className="text-[13px] font-bold uppercase">Выручка</span><Wallet size={20} /></div>
           <div className="text-[34px] font-extrabold">{stats.total_revenue?.toLocaleString() || 0} ₸</div>
@@ -249,6 +248,34 @@ export function MasterDashboardPage() {
              <span className="text-[24px] font-black">{stats.canceled_count || 0}</span>
           </div>
         </div>
+
+        {/* Секция популярных услуг */}
+        <div className="bg-white p-5 rounded-[24px] border shadow-sm space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <TrendingUp size={20} className="text-[#FF9500]" />
+            <h3 className="font-bold text-[17px]">Популярные услуги</h3>
+          </div>
+          <div className="space-y-3">
+            {stats.top_services && stats.top_services.length > 0 ? (
+              stats.top_services.map((s: any, i: number) => (
+                <div key={i} className="flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[#F2F2F7] flex items-center justify-center text-[13px] font-bold text-[#8E8E93]">
+                      {i + 1}
+                    </div>
+                    <span className="text-[15px] font-medium text-black">{s.title}</span>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="font-bold text-[15px]">{s.count}</span>
+                    <span className="text-[11px] text-[#8E8E93]">записей</span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-center text-[#8E8E93] py-4 text-sm">Нет данных по услугам</p>
+            )}
+          </div>
+        </div>
       </div>
     );
   };
@@ -259,8 +286,8 @@ export function MasterDashboardPage() {
       <div className="px-5 flex justify-between items-end">
         <h1 className="text-[32px] font-extrabold">{view === 'stats' ? 'Финансы' : 'Записи'}</h1>
         <div className="flex gap-2">
-          {view !== 'stats' && <button onClick={() => setIsAdding(true)} className="w-10 h-10 bg-[#007AFF] text-white rounded-full flex items-center justify-center"><Plus /></button>}
-          <button onClick={loadAllData} className="w-10 h-10 bg-white border rounded-full flex items-center justify-center"><RefreshCcw className={loading ? "animate-spin" : ""} /></button>
+          {view !== 'stats' && <button onClick={() => setIsAdding(true)} className="w-10 h-10 bg-[#007AFF] text-white rounded-full flex items-center justify-center shadow-lg"><Plus /></button>}
+          <button onClick={loadAllData} className="w-10 h-10 bg-white border rounded-full flex items-center justify-center shadow-sm"><RefreshCcw className={loading ? "animate-spin" : ""} /></button>
         </div>
       </div>
 
@@ -384,7 +411,6 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
     canceled: { bg: '#FFEBEE', text: '#C62828', lbl: 'ОТМЕНА' }
   }[app.status];
 
-  // Безопасное форматирование телефона
   const cleanPhone = app.client_phone?.replace(/[^0-9+]/g, '') || '';
 
   let tgUsername = null;
