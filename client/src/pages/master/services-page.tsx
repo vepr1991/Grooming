@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { Plus, Trash2, ChevronDown, Scissors, Image as ImageIcon, Camera, Loader2, Edit2 } from "lucide-react";
 import { toast } from "sonner";
+import imageCompression from 'browser-image-compression'; // 👈 НОВАЯ БИБЛИОТЕКА
 
 import { supabase } from "@/lib/supabase";
 import { api } from "@/lib/api";
-import { uploadImage } from "@/lib/upload"; // 👈 ИМПОРТ ЗАГРУЗЧИКА
+import { uploadImage } from "@/lib/upload";
 
 type Service = {
   id: string;
@@ -20,10 +21,9 @@ export function MasterServicesPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Состояние модалки
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [uploading, setUploading] = useState(false); // 👈 Состояние загрузки фото
+  const [uploading, setUploading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<Partial<Service>>({
@@ -77,25 +77,35 @@ export function MasterServicesPage() {
     setIsModalOpen(true);
   };
 
-  // 👇 ОБРАБОТЧИК ЗАГРУЗКИ ФАЙЛА
+  // 👇 НОВАЯ ФУНКЦИЯ: Сжатие и загрузка
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
 
     const file = e.target.files[0];
-    // Простая проверка размера (2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Файл слишком большой (макс 2МБ)");
-      return;
-    }
-
     setUploading(true);
+
     try {
-      const url = await uploadImage(file);
+      // 1. Настройки сжатия
+      const options = {
+        maxSizeMB: 1,           // Цель: меньше 1 МБ
+        maxWidthOrHeight: 1920, // Макс. ширина/высота (HD)
+        useWebWorker: true,     // Используем потоки для скорости
+        fileType: "image/jpeg"  // Конвертируем все в JPEG (легче)
+      };
+
+      // 2. Сжимаем
+      const compressedFile = await imageCompression(file, options);
+
+      // 3. Загружаем уже сжатый файл
+      // (uploadImage ожидает File, а compressedFile это File/Blob, так что все ок)
+      const url = await uploadImage(compressedFile);
+
       setFormData(prev => ({ ...prev, image_url: url }));
       toast.success("Фото загружено!");
+
     } catch (error) {
-      toast.error("Ошибка загрузки фото");
       console.error(error);
+      toast.error("Ошибка при обработке фото");
     } finally {
       setUploading(false);
     }
@@ -198,21 +208,21 @@ export function MasterServicesPage() {
             <div className="px-5 mt-6 space-y-5 flex-1 overflow-y-auto no-scrollbar pb-10">
               {/* Блок загрузки фото */}
               <div className="flex flex-col items-center gap-3 mb-2">
-                <div className="w-32 h-32 rounded-3xl bg-white border border-slate-100 shadow-sm overflow-hidden flex items-center justify-center relative group">
+                {/* 👇 ИСПРАВЛЕННЫЙ CSS: relative + overflow-hidden */}
+                <div className="w-32 h-32 rounded-3xl bg-white border border-slate-100 shadow-sm overflow-hidden flex items-center justify-center relative group shrink-0">
                   {formData.image_url ? (
-                    <img src={formData.image_url} className="w-full h-full object-cover" alt="Service" />
+                    // 👇 ИСПРАВЛЕННЫЙ CSS: absolute + inset-0 + object-cover
+                    <img src={formData.image_url} className="absolute inset-0 w-full h-full object-cover" alt="Service" />
                   ) : (
                     <ImageIcon size={48} className="text-[#C7C7CC]" />
                   )}
 
-                  {/* Лоадер при загрузке */}
                   {uploading && (
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-20">
                       <Loader2 className="animate-spin text-white" size={32} />
                     </div>
                   )}
 
-                  {/* Кнопка загрузки (прозрачный инпут) */}
                   <label className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/10 transition-colors cursor-pointer z-10">
                     <input
                       type="file"
@@ -228,7 +238,11 @@ export function MasterServicesPage() {
                     )}
                   </label>
                 </div>
-                {uploading && <p className="text-[12px] text-[#8E8E93]">Загрузка фото...</p>}
+                {uploading ? (
+                  <p className="text-[12px] text-[#8E8E93]">Сжатие и загрузка...</p>
+                ) : (
+                  <p className="text-[12px] text-[#8E8E93] text-center max-w-[200px]">Нажмите, чтобы загрузить фото</p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -301,9 +315,10 @@ function ServiceCard({ service, onDelete, onEdit }: { service: Service; onDelete
       onClick={() => setExpanded(!expanded)}
     >
       <div className="p-4 flex gap-4 items-center">
-        <div className="w-14 h-14 rounded-xl bg-[#F2F2F7] flex items-center justify-center shrink-0 shadow-inner overflow-hidden">
+        {/* 👇 ИСПРАВЛЕННЫЙ CSS КАРТОЧКИ */}
+        <div className="w-14 h-14 rounded-xl bg-[#F2F2F7] flex items-center justify-center shrink-0 shadow-inner overflow-hidden relative">
           {service.image_url ? (
-            <img src={service.image_url} className="w-full h-full object-cover" alt={service.title} />
+            <img src={service.image_url} className="absolute inset-0 w-full h-full object-cover" alt={service.title} />
           ) : (
             <Scissors size={24} className="text-[#8E8E93] opacity-40" />
           )}
@@ -325,17 +340,10 @@ function ServiceCard({ service, onDelete, onEdit }: { service: Service; onDelete
         </div>
 
         <div className="flex flex-col gap-1">
-           <button
-            onClick={onEdit}
-            className="p-2 text-[#007AFF] active:opacity-40 transition-opacity"
-          >
+           <button onClick={onEdit} className="p-2 text-[#007AFF] active:opacity-40 transition-opacity">
             <Edit2 size={20} />
           </button>
-
-          <button
-            onClick={onDelete}
-            className="p-2 text-[#FF3B30] active:opacity-40 transition-opacity"
-          >
+          <button onClick={onDelete} className="p-2 text-[#FF3B30] active:opacity-40 transition-opacity">
             <Trash2 size={20} />
           </button>
         </div>

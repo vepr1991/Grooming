@@ -42,10 +42,8 @@ type Service = {
   duration_minutes: number;
 };
 
-// 👇 УТИЛИТА: Игнорируем часовой пояс сервера (+00) и считаем время локальным
 const parseDate = (dateStr: string) => {
   if (!dateStr) return new Date();
-  // Берем только первые 19 символов (YYYY-MM-DDTHH:mm:ss), отбрасывая Z или +00
   return new Date(dateStr.substring(0, 19));
 };
 
@@ -58,7 +56,6 @@ export function MasterDashboardPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Стейт для модалки
   const [isAdding, setIsAdding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newApp, setNewApp] = useState({
@@ -71,8 +68,9 @@ export function MasterDashboardPage() {
   const fetchAppointments = async () => {
     if (!salonId) return;
     setLoading(true);
+    // 👇 ИСПРАВЛЕНИЕ 1: Добавил image_url в запрос
     const { data, error } = await supabase.from('appointments')
-      .select(`*, services (title, price, duration_minutes)`)
+      .select(`*, services (title, price, duration_minutes, image_url)`)
       .eq('salon_id', salonId);
 
     if (!error) setAppointments(data || []);
@@ -155,14 +153,12 @@ export function MasterDashboardPage() {
   const filteredApps = appointments
     .filter(app => filter === 'pending' ? app.status === 'pending' : ['confirmed', 'completed', 'canceled'].includes(app.status))
     .sort((a, b) => {
-      // ИСПОЛЬЗУЕМ parseDate ДЛЯ СОРТИРОВКИ
       const tA = parseDate(a.start_time).getTime();
       const tB = parseDate(b.start_time).getTime();
       return filter === 'pending' ? tA - tB : tB - tA;
     });
 
   const calendarPendingApps = appointments.filter(app =>
-    // ИСПОЛЬЗУЕМ parseDate ДЛЯ КАЛЕНДАРЯ
     isSameDay(parseDate(app.start_time), selectedDate) && app.status === 'pending'
   );
 
@@ -181,7 +177,6 @@ export function MasterDashboardPage() {
       const dateObj = new Date(year, month, d);
       const isSel = isSameDay(dateObj, selectedDate);
 
-      // ИСПОЛЬЗУЕМ parseDate ДЛЯ ТОЧЕК НА КАЛЕНДАРЕ
       const hasPending = appointments.some(a => isSameDay(parseDate(a.start_time), dateObj) && a.status === 'pending');
       const isCurrToday = isToday(dateObj);
 
@@ -299,7 +294,6 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
   };
   const config = statusConfig[app.status] || statusConfig.pending;
 
-  // 👇 ИСПОЛЬЗУЕМ parseDate ДЛЯ ОТОБРАЖЕНИЯ
   const sTime = parseDate(app.start_time);
   const sInfo = Array.isArray(app.services) ? app.services[0] : app.services;
 
@@ -319,7 +313,14 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
       {expanded && (
         <div className="px-4 pb-4 bg-white animate-in slide-in-from-top-2">
           <div className="flex gap-4 py-3 border-t border-[#F2F2F7]">
-            <div className="w-20 h-20 rounded-2xl bg-[#F2F2F7] flex items-center justify-center shrink-0"><Scissors size={28} className="text-[#8E8E93] opacity-20" /></div>
+            {/* 👇 ИСПРАВЛЕНИЕ 2: Отрисовка картинки */}
+            <div className="w-20 h-20 rounded-2xl bg-[#F2F2F7] flex items-center justify-center shrink-0 overflow-hidden relative border border-slate-100">
+              {sInfo?.image_url ? (
+                <img src={sInfo.image_url} className="absolute inset-0 w-full h-full object-cover" alt="Service" />
+              ) : (
+                <Scissors size={28} className="text-[#8E8E93] opacity-20" />
+              )}
+            </div>
             <div className="flex-1 min-w-0 space-y-1">
               <p className="text-[15px] font-bold text-black truncate">{app.pet_breed || "Порода не указана"}</p>
               <div className="bg-[#F2F2F7] rounded-xl p-2.5"><p className="text-[13px] font-semibold text-black truncate">{sInfo?.title}</p><p className="text-[11px] text-[#8E8E93]">{sInfo?.duration_minutes || '30'} мин • {sInfo?.price || '0'} ₸</p></div>

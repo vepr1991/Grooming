@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="Grooming API", version="3.3", lifespan=lifespan)
+app = FastAPI(title="Grooming API", version="3.4", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -126,39 +126,26 @@ class ServiceUpdate(BaseModel):
 
 def verify_telegram_data(x_telegram_init_data: str = Header(None)) -> Optional[int]:
     """Проверяет initData от Telegram и возвращает ID пользователя"""
-    # Если заголовка нет или включен режим отладки (dev_mode без проверки)
-    if not x_telegram_init_data:
-        # В продакшене тут лучше возвращать None или ошибку
-        # Для удобства пока вернем None (гость)
-        return None
+    if not x_telegram_init_data: return None
 
     try:
-        # 1. Парсим строку initData
         data_dict = {}
         for part in x_telegram_init_data.split('&'):
             if '=' in part:
                 key, value = part.split('=', 1)
                 data_dict[key] = unquote(value)
 
-        # 2. Проверяем подпись (hash)
         received_hash = data_dict.pop('hash', '')
         if not received_hash: return None
 
-        # Сортируем ключи и собираем строку для проверки
         data_check_string = '\n'.join([f'{k}={v}' for k, v in sorted(data_dict.items())])
-
-        # Вычисляем HMAC
         secret_key = hmac.new(b"WebAppData", TELEGRAM_BOT_TOKEN.encode(), hashlib.sha256).digest()
         calculated_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
-        if calculated_hash != received_hash:
-            logger.warning("Auth failed: Hash mismatch")
-            return None  # Подпись не совпала
+        if calculated_hash != received_hash: return None
 
-        # 3. Извлекаем ID пользователя
         user_data = json.loads(data_dict.get('user', '{}'))
         return user_data.get('id')
-
     except Exception as e:
         logger.error(f"Auth error: {e}")
         return None
@@ -187,22 +174,43 @@ def check_overlap(salon_id: str, start_time: datetime, end_time: datetime) -> bo
 
 
 def send_telegram_notification_task(salon_id: str, data: BookingRequest, start_dt: datetime):
+    """Уведомление МАСТЕРУ (Исправленный подробный формат)"""
     try:
         res = supabase.table("salons").select("telegram_chat_id, name").eq("id", salon_id).single().execute()
         if not res.data: return
-        chat_id = res.data.get("telegram_chat_id")
-        if chat_id:
-            msg = (f"🔔 <b>Новая запись!</b>\n\n👤 {data.client.name}\n📞 {data.client.phone}\n"
-                   f"🐶 {data.pet.name}\n✂️ {data.service.title}\n📅 {start_dt.strftime('%d.%m.%Y %H:%M')}")
+
+        master_chat_id = res.data.get("telegram_chat_id")
+        salon_name = res.data.get("name")
+
+        if master_chat_id:
+            # Формируем строку питомца с породой
+            pet_info = f"{data.pet.name}"
+            if data.pet.petBreed:
+                pet_info += f" ({data.pet.petBreed})"
+
+            msg = (
+                f"🔔 <b>Новая запись в {salon_name}!</b>\n\n"
+                f"👤 <b>Клиент:</b> {data.client.name}\n"
+                f"📞 <b>Тел:</b> {data.client.phone}\n"
+                f"🐶 <b>Питомец:</b> {pet_info}\n"
+                f"✂️ <b>Услуга:</b> {data.service.title}\n"
+                f"📅 <b>Дата:</b> {start_dt.strftime('%d.%m.%Y')}\n"
+                f"⏰ <b>Время:</b> {start_dt.strftime('%H:%M')}\n\n"
+                f"<i>Зайдите в приложение для подтверждения.</i>"
+            )
+
             markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton("Открыть админку", web_app=types.WebAppInfo(
-                url="https://grooming-react-front.onrender.com/master")))
-            bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=markup)
-    except Exception:
-        pass
+            FRONTEND_URL = "https://grooming-react-front.onrender.com"
+            markup.add(
+                types.InlineKeyboardButton("Открыть админку", web_app=types.WebAppInfo(url=f"{FRONTEND_URL}/master")))
+            bot.send_message(master_chat_id, msg, parse_mode="HTML", reply_markup=markup)
+            logger.info(f"Master notified: {master_chat_id}")
+    except Exception as e:
+        logger.error(f"Master notify error: {e}")
 
 
 def send_client_notification(appointment_id: str, status_type: str):
+    """Уведомление КЛИЕНТУ"""
     try:
         res = supabase.table("appointments").select("*, salons(name), services(title)").eq("id",
                                                                                            appointment_id).single().execute()
@@ -219,14 +227,17 @@ def send_client_notification(appointment_id: str, status_type: str):
         if not tg_user or not tg_user.get("id"): return
 
         start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
-        date_str = start_dt.strftime('%d.%m.%Y %H:%M')
+        date_str = start_dt.strftime('%d.%m.%Y')
+        time_str = start_dt.strftime('%H:%M')
+        salon_name = appt['salons']['name']
 
         msgs = {
-            'confirmed': f"✅ Запись подтверждена!\n✂️ {appt['salons']['name']}\n📅 {date_str}",
-            'canceled': f"❌ Запись отменена.\n✂️ {appt['salons']['name']}\n📅 {date_str}"
+            'confirmed': f"✅ <b>Ваша запись подтверждена!</b>\n\n✂️ <b>Салон:</b> {salon_name}\n📅 <b>Дата:</b> {date_str}\n⏰ <b>Время:</b> {time_str}",
+            'canceled': f"❌ <b>Ваша запись отменена</b>\n\n✂️ <b>Салон:</b> {salon_name}\n📅 <b>Дата:</b> {date_str}\n⏰ <b>Время:</b> {time_str}\n\n<i>Приносим извинения.</i>"
         }
+
         if status_type in msgs:
-            bot.send_message(tg_user.get("id"), msgs[status_type])
+            bot.send_message(tg_user.get("id"), msgs[status_type], parse_mode="HTML")
     except Exception:
         pass
 
@@ -234,7 +245,7 @@ def send_client_notification(appointment_id: str, status_type: str):
 # --- 6. API Endpoints ---
 
 @app.get("/")
-def health_check(): return {"status": "active", "service": "Grooming Backend v3.3 (Auth)"}
+def health_check(): return {"status": "active", "service": "Grooming Backend v3.4"}
 
 
 @app.get("/api/user-status/{tg_id}")
@@ -248,7 +259,6 @@ async def check_user_status(tg_id: int):
 
 @app.post("/api/book")
 async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks):
-    # Публичный метод, авторизация не нужна
     try:
         start_dt = datetime.fromisoformat(f"{data.date}T{data.time}:00")
         end_dt = start_dt + timedelta(minutes=data.service.duration_minutes)
@@ -273,18 +283,15 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
         raise HTTPException(500, "Server Error")
 
 
-# --- ЗАЩИЩЕННЫЕ МЕТОДЫ (Только для владельцев) ---
+# --- ЗАЩИЩЕННЫЕ МЕТОДЫ ---
 
 @app.post("/api/register")
 async def register_salon(payload: SalonCreate):
-    # Тут можно проверить initData, чтобы убедиться, что регистрируется реальный юзер
-    # Но для простоты пока оставим открытым
     try:
         existing = supabase.table("salons").select("id").eq("telegram_chat_id", payload.telegram_chat_id).execute()
         if existing.data: return {"success": True, "data": existing.data[0], "message": "Exists"}
 
         slug_val = f"salon_{payload.telegram_chat_id}_{int(time.time())}"
-        # ... (сократил дефолтное расписание для читаемости, логика та же)
         sched = json.dumps(
             [{"day": d, "isWorking": d not in ["Сб", "Вс"], "hours": {"start": "10:00", "end": "20:00"}} for d in
              ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]])
@@ -301,12 +308,9 @@ async def register_salon(payload: SalonCreate):
 @app.patch("/api/salons/{salon_id}")
 async def update_salon_profile(salon_id: str, payload: SalonUpdate,
                                tg_user_id: Optional[int] = Depends(verify_telegram_data)):
-    # 🔐 ПРОВЕРКА ВЛАДЕЛЬЦА
     if tg_user_id:
-        # Если пришел заголовок с валидной подписью, проверяем, принадлежит ли салон этому юзеру
         check = supabase.table("salons").select("id").eq("id", salon_id).eq("telegram_chat_id", tg_user_id).execute()
-        if not check.data:
-            raise HTTPException(status_code=403, detail="Вы не владелец этого салона")
+        if not check.data: raise HTTPException(403, "Forbidden")
 
     try:
         res = supabase.table("salons").update(payload.dict(exclude_unset=True)).eq("id", salon_id).execute()
@@ -318,7 +322,6 @@ async def update_salon_profile(salon_id: str, payload: SalonUpdate,
 
 @app.post("/api/services")
 async def create_service(payload: ServiceCreate, tg_user_id: Optional[int] = Depends(verify_telegram_data)):
-    # 🔐 ПРОВЕРКА ВЛАДЕЛЬЦА
     if tg_user_id:
         check = supabase.table("salons").select("id").eq("id", payload.salon_id).eq("telegram_chat_id",
                                                                                     tg_user_id).execute()
@@ -335,11 +338,9 @@ async def create_service(payload: ServiceCreate, tg_user_id: Optional[int] = Dep
 
 @app.delete("/api/services/{service_id}")
 async def delete_service(service_id: str, tg_user_id: Optional[int] = Depends(verify_telegram_data)):
-    # 🔐 Для удаления сложнее: надо сначала узнать salon_id этой услуги
     try:
         service_res = supabase.table("services").select("salon_id").eq("id", service_id).single().execute()
         if service_res.data and tg_user_id:
-            # Проверяем владельца салона
             salon_check = supabase.table("salons").select("id").eq("id", service_res.data['salon_id']).eq(
                 "telegram_chat_id", tg_user_id).execute()
             if not salon_check.data: raise HTTPException(403, "Forbidden")
@@ -353,9 +354,7 @@ async def delete_service(service_id: str, tg_user_id: Optional[int] = Depends(ve
 @app.patch("/api/services/{service_id}")
 async def update_service(service_id: str, payload: ServiceUpdate,
                          tg_user_id: Optional[int] = Depends(verify_telegram_data)):
-    # 🔐 Аналогичная проверка (упрощенно)
     try:
-        # (Тут можно добавить проверку владельца, как выше)
         res = supabase.table("services").update(payload.dict(exclude_unset=True)).eq("id", service_id).execute()
         return {"success": True, "data": res.data[0]}
     except Exception as e:
@@ -364,7 +363,6 @@ async def update_service(service_id: str, payload: ServiceUpdate,
 
 @app.patch("/api/appointments/{appointment_id}/status")
 async def update_appointment_status(appointment_id: str, payload: StatusUpdate, background_tasks: BackgroundTasks):
-    # Тут тоже стоит добавить проверку, но пока оставим как есть для надежности работы дашборда
     try:
         res = supabase.table("appointments").update({"status": payload.status}).eq("id", appointment_id).execute()
         if not res.data: raise HTTPException(404, "Not Found")
