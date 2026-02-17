@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="Grooming API", version="4.0", lifespan=lifespan)
+app = FastAPI(title="Grooming API", version="4.1", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -76,12 +76,13 @@ class PetInfo(BaseModel):
 class ServiceInfo(BaseModel):
     id: str
     title: str
+    price: int  # Добавили цену в модель для аналитики
     duration_minutes: int = Field(..., gt=0)
 
 
 class BookingRequest(BaseModel):
     salonId: str
-    service: ServiceInfo
+    services: List[ServiceInfo]  # 👈 Теперь список услуг!
     date: str
     time: str
     client: ClientInfo
@@ -179,11 +180,10 @@ def check_overlap(salon_id: str, start_time: datetime, end_time: datetime) -> bo
         return True
 
 
-# 👇 НОВАЯ ФУНКЦИЯ: Проверка рабочего времени
 def validate_working_hours(salon_id: str, start_dt: datetime, end_dt: datetime):
     try:
         res = supabase.table("salons").select("schedule").eq("id", salon_id).single().execute()
-        if not res.data or not res.data.get('schedule'): return  # Если графика нет, разрешаем
+        if not res.data or not res.data.get('schedule'): return
 
         schedule = json.loads(res.data['schedule'])
         days_map = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
@@ -191,11 +191,9 @@ def validate_working_hours(salon_id: str, start_dt: datetime, end_dt: datetime):
 
         day_sched = next((d for d in schedule if d["day"] == day_key), None)
 
-        # 1. Проверяем, рабочий ли день
         if not day_sched or not day_sched.get("isWorking"):
             raise HTTPException(400, f"Салон не работает в {day_key}")
 
-        # 2. Проверяем часы
         work_start = datetime.strptime(day_sched["hours"]["start"], "%H:%M").time()
         work_end = datetime.strptime(day_sched["hours"]["end"], "%H:%M").time()
 
@@ -209,7 +207,6 @@ def validate_working_hours(salon_id: str, start_dt: datetime, end_dt: datetime):
         raise e
     except Exception as e:
         logger.error(f"Schedule check error: {e}")
-        # Не блокируем, если ошибка парсинга, но логируем
 
 
 async def check_upcoming_appointments():
@@ -233,11 +230,19 @@ async def check_upcoming_appointments():
                 tg_user = json.loads(tg_user_raw) if isinstance(tg_user_raw, str) else tg_user_raw
                 client_id = tg_user.get("id")
                 if not client_id: continue
+
+                # Получаем название услуг (поддержка старого и нового формата)
+                svc_title = "Услуга"
+                if appt.get('selected_services') and len(appt['selected_services']) > 0:
+                    svc_title = ", ".join([s['title'] for s in appt['selected_services']])
+                elif appt.get('services'):
+                    svc_title = appt['services']['title']
+
                 start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
                 time_str = start_dt.strftime('%H:%M')
                 msg = (
                     f"⏰ <b>Напоминание!</b>\n\nЧерез час ({time_str}) у вас запись в <b>{appt['salons']['name']}</b>.\n"
-                    f"✂️ Услуга: {appt['services']['title']}\n\n<i>Ждем вас!</i>")
+                    f"✂️ {svc_title}\n\n<i>Ждем вас!</i>")
                 bot.send_message(client_id, msg, parse_mode="HTML")
                 supabase.table("appointments").update({"reminder_sent": True}).eq("id", appt['id']).execute()
             except Exception as e:
@@ -251,9 +256,13 @@ def send_telegram_notification_task(salon_id: str, data: BookingRequest, start_d
         res = supabase.table("salons").select("telegram_chat_id, name").eq("id", salon_id).single().execute()
         if not res.data: return
         chat_id = res.data.get("telegram_chat_id")
+
+        # Формируем список услуг
+        services_list = ", ".join([s.title for s in data.services])
         pet_info = f"{data.pet.name}" + (f" ({data.pet.petBreed})" if data.pet.petBreed else "")
+
         msg = (f"🔔 <b>Новая запись в {res.data.get('name')}!</b>\n\n👤 <b>Клиент:</b> {data.client.name}\n"
-               f"📞 <b>Тел:</b> {data.client.phone}\n🐶 <b>Питомец:</b> {pet_info}\n✂️ <b>Услуга:</b> {data.service.title}\n"
+               f"📞 <b>Тел:</b> {data.client.phone}\n🐶 <b>Питомец:</b> {pet_info}\n✂️ <b>Услуги:</b> {services_list}\n"
                f"📅 <b>Дата:</b> {start_dt.strftime('%d.%m.%Y')}\n⏰ <b>Время:</b> {start_dt.strftime('%H:%M')}")
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("Открыть админку", web_app=types.WebAppInfo(
@@ -269,7 +278,7 @@ def send_client_notification(appointment_id: str, status_type: str):
                                                                                                   appointment_id).single().execute()
         if not res.data: return
         appt = res.data
-        if not appt.get("client_tg_user"): return  # Skip if no tg user (e.g. blocked slot)
+        if not appt.get("client_tg_user"): return
 
         tg_user = json.loads(appt["client_tg_user"]) if isinstance(appt["client_tg_user"], str) else appt[
             "client_tg_user"]
@@ -277,12 +286,18 @@ def send_client_notification(appointment_id: str, status_type: str):
 
         start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
 
-        # Защита от отсутствия услуги (для перерывов)
-        svc_title = appt['services']['title'] if appt.get('services') else "Услуга"
+        # Определяем название услуг
+        svc_title = "Услуга"
+        if appt.get('selected_services') and len(appt['selected_services']) > 0:
+            # Если есть список услуг, берем их
+            svc_title = ", ".join([s['title'] for s in appt['selected_services']])
+        elif appt.get('services'):
+            # Fallback для старых записей
+            svc_title = appt['services']['title']
 
         msg = (
             f"{'✅' if status_type == 'confirmed' else '❌'} <b>Запись {'подтверждена' if status_type == 'confirmed' else 'отменена'}</b>\n\n"
-            f"✂️ <b>Салон:</b> {appt['salons']['name']}\n🛠 <b>Услуга:</b> {svc_title}\n"
+            f"✂️ <b>Салон:</b> {appt['salons']['name']}\n🛠 <b>Услуги:</b> {svc_title}\n"
             f"📅 <b>Дата:</b> {start_dt.strftime('%d.%m.%Y')}\n⏰ <b>Время:</b> {start_dt.strftime('%H:%M')}")
         if status_type == 'confirmed' and appt['salons'].get('phone'):
             msg += f"\n\n📞 <b>Телефон:</b> {appt['salons']['phone']}"
@@ -293,7 +308,7 @@ def send_client_notification(appointment_id: str, status_type: str):
 
 # --- API Endpoints ---
 @app.get("/")
-def health_check(): return {"status": "active", "version": "4.0"}
+def health_check(): return {"status": "active", "version": "4.1"}
 
 
 @app.get("/api/user-status/{tg_id}")
@@ -310,32 +325,58 @@ async def get_analytics(salon_id: str, tg_user_id: Optional[int] = Depends(verif
     try:
         today = datetime.now()
         start_month = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+        # Запрашиваем selected_services (JSON) и services (FK)
         res = supabase.table("appointments").select("*, services(id, title, price)").eq("salon_id", salon_id).gte(
             "start_time", start_month).execute()
         apps = res.data or []
+
         total_rev, today_rev, comp, canc = 0, 0, 0, 0
         daily_map, services_usage = {}, {}
         today_str = today.strftime('%Y-%m-%d')
+
         for app in apps:
-            s = app.get('services')
-            if not s: continue  # Skip blocks
             if app['status'] == 'completed':
                 comp += 1
-                total_rev += s['price']
-                services_usage[s['id']] = services_usage.get(s['id'], {"title": s['title'], "count": 0})
-                services_usage[s['id']]["count"] += 1
+
+                # Считаем деньги и популярность
+                app_price = 0
+                selected = app.get('selected_services')
+
+                # Если есть список услуг (новая логика)
+                if selected and isinstance(selected, list) and len(selected) > 0:
+                    for s in selected:
+                        p = s.get('price', 0)
+                        app_price += p
+                        sid = s.get('id', 'unknown')
+                        stitle = s.get('title', 'Unknown')
+                        services_usage[sid] = services_usage.get(sid, {"title": stitle, "count": 0})
+                        services_usage[sid]["count"] += 1
+                # Fallback для старых записей
+                elif app.get('services'):
+                    s = app['services']
+                    app_price = s['price']
+                    services_usage[s['id']] = services_usage.get(s['id'], {"title": s['title'], "count": 0})
+                    services_usage[s['id']]["count"] += 1
+
+                total_rev += app_price
+
                 d_str = app['start_time'][:10]
-                daily_map[d_str] = daily_map.get(d_str, 0) + s['price']
-                if d_str == today_str: today_rev += s['price']
+                daily_map[d_str] = daily_map.get(d_str, 0) + app_price
+                if d_str == today_str: today_rev += app_price
+
             elif app['status'] == 'canceled':
                 canc += 1
+
         top_services = sorted(services_usage.values(), key=lambda x: x['count'], reverse=True)[:3]
         daily_stats = [{"date": datetime.strptime(k, "%Y-%m-%d").strftime("%d.%m"), "value": v} for k, v in
                        sorted(daily_map.items())]
+
         return {"total_revenue": total_rev, "total_appointments": len(apps), "completed_count": comp,
                 "canceled_count": canc, "today_revenue": today_rev, "daily_stats": daily_stats,
                 "top_services": top_services}
     except Exception as e:
+        logger.error(f"Analytics error: {e}")
         raise HTTPException(500, str(e))
 
 
@@ -372,25 +413,40 @@ async def get_salon_clients(salon_id: str, tg_user_id: Optional[int] = Depends(v
 
 @app.post("/api/book")
 async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks):
+    # 👇 Считаем общую длительность
+    total_duration = sum(s.duration_minutes for s in data.services)
+
     start_dt = datetime.fromisoformat(f"{data.date}T{data.time}:00")
-    end_dt = start_dt + timedelta(minutes=data.service.duration_minutes)
+    end_dt = start_dt + timedelta(minutes=total_duration)
 
-    # 1. Проверяем график
     validate_working_hours(data.salonId, start_dt, end_dt)
-
-    # 2. Проверяем занятость
     if check_overlap(data.salonId, start_dt, end_dt): raise HTTPException(409, "Slot taken")
 
-    payload = {"salon_id": data.salonId, "service_id": data.service.id, "client_name": data.client.name,
-               "client_phone": data.client.phone, "client_tg_user": json.dumps(data.client.telegram_user),
-               "pet_name": data.pet.name, "pet_breed": data.pet.petBreed, "start_time": start_dt.isoformat(),
-               "end_time": end_dt.isoformat(), "status": "pending"}
+    # 👇 Собираем список услуг в JSON
+    selected_services_json = [s.dict() for s in data.services]
+
+    # Берем ID первой услуги как primary (для FK)
+    primary_service_id = data.services[0].id if data.services else None
+
+    payload = {
+        "salon_id": data.salonId,
+        "service_id": primary_service_id,  # Оставляем для совместимости
+        "client_name": data.client.name,
+        "client_phone": data.client.phone,
+        "client_tg_user": json.dumps(data.client.telegram_user),
+        "pet_name": data.pet.name,
+        "pet_breed": data.pet.petBreed,
+        "start_time": start_dt.isoformat(),
+        "end_time": end_dt.isoformat(),
+        "status": "pending",
+        "selected_services": selected_services_json  # 👈 Сохраняем полный список
+    }
+
     res = supabase.table("appointments").insert(payload).execute()
     background_tasks.add_task(send_telegram_notification_task, data.salonId, data, start_dt)
     return {"success": True, "id": res.data[0]['id']}
 
 
-# 👇 НОВЫЙ ЭНДПОИНТ: БЛОКИРОВКА СЛОТА
 @app.post("/api/block")
 async def block_slot(data: BlockRequest, tg_user_id: Optional[int] = Depends(verify_telegram_data)):
     if tg_user_id:
@@ -401,19 +457,14 @@ async def block_slot(data: BlockRequest, tg_user_id: Optional[int] = Depends(ver
     start_dt = datetime.fromisoformat(f"{data.date}T{data.time}:00")
     end_dt = start_dt + timedelta(minutes=data.duration_minutes)
 
-    # Можно не проверять рабочий график (мастер может блокировать что хочет),
-    # но лучше проверить, чтобы случайно не заблочить ночь.
-    # validate_working_hours(data.salonId, start_dt, end_dt)
-
     if check_overlap(data.salonId, start_dt, end_dt): raise HTTPException(409, "Slot taken")
 
     payload = {
         "salon_id": data.salonId,
-        "client_name": data.reason,  # "Перерыв"
+        "client_name": data.reason,
         "start_time": start_dt.isoformat(),
         "end_time": end_dt.isoformat(),
         "status": "blocked",
-        # Остальные поля будут NULL
     }
 
     res = supabase.table("appointments").insert(payload).execute()

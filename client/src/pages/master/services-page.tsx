@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Plus, Trash2, ChevronDown, Scissors, Image as ImageIcon, Camera, Loader2, Edit2 } from "lucide-react";
 import { toast } from "sonner";
-import imageCompression from 'browser-image-compression'; // 👈 НОВАЯ БИБЛИОТЕКА
+import imageCompression from 'browser-image-compression';
 
 import { supabase } from "@/lib/supabase";
 import { api } from "@/lib/api";
@@ -12,7 +12,7 @@ type Service = {
   title: string;
   price: number;
   duration_minutes: number;
-  description?: string;
+  description?: string; // 👈 Поле описания
   image_url?: string;
   is_active?: boolean;
 };
@@ -77,7 +77,6 @@ export function MasterServicesPage() {
     setIsModalOpen(true);
   };
 
-  // 👇 НОВАЯ ФУНКЦИЯ: Сжатие и загрузка
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
 
@@ -85,19 +84,14 @@ export function MasterServicesPage() {
     setUploading(true);
 
     try {
-      // 1. Настройки сжатия
       const options = {
-        maxSizeMB: 1,           // Цель: меньше 1 МБ
-        maxWidthOrHeight: 1920, // Макс. ширина/высота (HD)
-        useWebWorker: true,     // Используем потоки для скорости
-        fileType: "image/jpeg"  // Конвертируем все в JPEG (легче)
+        maxSizeMB: 1,
+        maxWidthOrHeight: 1920,
+        useWebWorker: true,
+        fileType: "image/jpeg"
       };
 
-      // 2. Сжимаем
       const compressedFile = await imageCompression(file, options);
-
-      // 3. Загружаем уже сжатый файл
-      // (uploadImage ожидает File, а compressedFile это File/Blob, так что все ок)
       const url = await uploadImage(compressedFile);
 
       setFormData(prev => ({ ...prev, image_url: url }));
@@ -124,7 +118,7 @@ export function MasterServicesPage() {
         title: formData.title,
         price: Number(formData.price),
         duration_minutes: Number(formData.duration_minutes),
-        description: formData.description,
+        description: formData.description, // 👈 Сохраняем описание
         image_url: formData.image_url,
         salon_id: salonId,
       };
@@ -206,12 +200,10 @@ export function MasterServicesPage() {
             </div>
 
             <div className="px-5 mt-6 space-y-5 flex-1 overflow-y-auto no-scrollbar pb-10">
-              {/* Блок загрузки фото */}
+              {/* Фото */}
               <div className="flex flex-col items-center gap-3 mb-2">
-                {/* 👇 ИСПРАВЛЕННЫЙ CSS: relative + overflow-hidden */}
                 <div className="w-32 h-32 rounded-3xl bg-white border border-slate-100 shadow-sm overflow-hidden flex items-center justify-center relative group shrink-0">
                   {formData.image_url ? (
-                    // 👇 ИСПРАВЛЕННЫЙ CSS: absolute + inset-0 + object-cover
                     <img src={formData.image_url} className="absolute inset-0 w-full h-full object-cover" alt="Service" />
                   ) : (
                     <ImageIcon size={48} className="text-[#C7C7CC]" />
@@ -238,11 +230,9 @@ export function MasterServicesPage() {
                     )}
                   </label>
                 </div>
-                {uploading ? (
-                  <p className="text-[12px] text-[#8E8E93]">Сжатие и загрузка...</p>
-                ) : (
-                  <p className="text-[12px] text-[#8E8E93] text-center max-w-[200px]">Нажмите, чтобы загрузить фото</p>
-                )}
+                <p className="text-[12px] text-[#8E8E93] text-center max-w-[200px]">
+                    {uploading ? "Сжатие и загрузка..." : "Нажмите, чтобы загрузить фото"}
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -286,11 +276,12 @@ export function MasterServicesPage() {
                 </div>
               </div>
 
+              {/* 👇 ПОЛЕ ДЛЯ ОПИСАНИЯ */}
               <div className="space-y-1.5">
                 <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1">Описание</label>
                 <div className="bg-white rounded-[12px] p-3 border border-slate-100 shadow-sm">
                   <textarea
-                    placeholder="Что входит в услугу..."
+                    placeholder="Что входит в услугу (купание, стрижка когтей...)"
                     rows={4}
                     className="w-full text-[17px] outline-none resize-none caret-[#007AFF] bg-transparent"
                     value={formData.description}
@@ -315,7 +306,6 @@ function ServiceCard({ service, onDelete, onEdit }: { service: Service; onDelete
       onClick={() => setExpanded(!expanded)}
     >
       <div className="p-4 flex gap-4 items-center">
-        {/* 👇 ИСПРАВЛЕННЫЙ CSS КАРТОЧКИ */}
         <div className="w-14 h-14 rounded-xl bg-[#F2F2F7] flex items-center justify-center shrink-0 shadow-inner overflow-hidden relative">
           {service.image_url ? (
             <img src={service.image_url} className="absolute inset-0 w-full h-full object-cover" alt={service.title} />
@@ -349,6 +339,7 @@ function ServiceCard({ service, onDelete, onEdit }: { service: Service; onDelete
         </div>
       </div>
 
+      {/* 👇 ОТОБРАЖЕНИЕ ОПИСАНИЯ ПРИ РАСКРЫТИИ */}
       {expanded && service.description && (
         <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-300">
           <div className="pt-3 border-t border-[#F2F2F7] overflow-hidden">
