@@ -20,7 +20,7 @@ import {
   Copy,
   MessageSquare,
   BarChart3,
-  Coffee // 👈 Иконка для перерыва
+  Coffee
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -37,7 +37,7 @@ type Appointment = {
   pet_breed: string;
   start_time: string;
   end_time: string;
-  status: 'pending' | 'confirmed' | 'completed' | 'canceled' | 'blocked'; // 👈 Добавил blocked
+  status: 'pending' | 'confirmed' | 'completed' | 'canceled' | 'blocked';
   services: any;
 };
 
@@ -64,13 +64,13 @@ export function MasterDashboardPage() {
   const [loading, setLoading] = useState(true);
 
   const [isAdding, setIsAdding] = useState(false);
-  const [addMode, setAddMode] = useState<'booking' | 'block'>('booking'); // 👈 Режим добавления
+  const [addMode, setAddMode] = useState<'booking' | 'block'>('booking');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [newApp, setNewApp] = useState({
     client_name: "", client_phone: "", pet_name: "", pet_breed: "", service_id: "",
     date: format(new Date(), "yyyy-MM-dd"), time: format(new Date(), "HH:mm"),
-    duration_minutes: 60 // Для перерыва
+    duration_minutes: 60
   });
 
   const salonId = localStorage.getItem("salon_id");
@@ -83,7 +83,6 @@ export function MasterDashboardPage() {
   const fetchAppointments = async () => {
     if (!salonId) return;
     setLoading(true);
-    // Для blocked записей services будет null
     const { data, error } = await supabase.from('appointments')
       .select(`*, services (title, price, duration_minutes, image_url)`)
       .eq('salon_id', salonId);
@@ -130,7 +129,6 @@ export function MasterDashboardPage() {
               });
               toast.success("Записано!");
         } else {
-            // BLOCK MODE
             await api.blockSlot({
                 salonId,
                 date: newApp.date,
@@ -172,12 +170,22 @@ export function MasterDashboardPage() {
       } catch(e) { toast.error("Ошибка"); }
   };
 
-  // Фильтр: показываем blocked всегда (кроме canceled)
+  // 👇 ИСПРАВЛЕННЫЙ ФИЛЬТР: ВЕРНУЛ 'canceled' В ИСТОРИЮ
   const filteredApps = appointments.filter(app => {
-      if (app.status === 'canceled') return false;
-      if (filter === 'pending') return app.status === 'pending' || app.status === 'blocked';
-      return ['confirmed', 'completed'].includes(app.status);
-  }).sort((a, b) => parseDate(a.start_time).getTime() - parseDate(b.start_time).getTime());
+      if (filter === 'pending') {
+          // Активные: Ожидает, Подтверждено, Перерыв (если не отменен)
+          return ['pending', 'confirmed', 'blocked'].includes(app.status);
+      } else {
+          // История: Завершено, Отменено
+          return ['completed', 'canceled'].includes(app.status);
+      }
+  }).sort((a, b) => {
+      const tA = parseDate(a.start_time).getTime();
+      const tB = parseDate(b.start_time).getTime();
+      // Ожидающие: Сначала ближайшие
+      // История: Сначала новые
+      return filter === 'pending' ? tA - tB : tB - tA;
+  });
 
   const calendarPendingApps = appointments.filter(app => isSameDay(parseDate(app.start_time), selectedDate) && app.status !== 'canceled');
 
@@ -269,20 +277,17 @@ export function MasterDashboardPage() {
       {view === 'calendar' && <div className="space-y-4">{renderCalendar()}<div className="px-5 space-y-3"><h2 className="text-[13px] font-bold text-[#8E8E93] uppercase px-1">{format(selectedDate, 'd MMMM', { locale: ru })}</h2>{calendarPendingApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} onDeleteBlock={handleDeleteBlock} />)}</div></div>}
       {view === 'stats' && renderStats()}
 
-      {/* МОДАЛЬНОЕ ОКНО С ТАБАМИ */}
+      {/* МОДАЛЬНОЕ ОКНО */}
       {isAdding && (
         <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-end justify-center">
           <div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[24px] h-[90vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom">
             <div className="p-4 border-b flex justify-between items-center bg-white"><button onClick={() => setIsAdding(false)} className="text-[#007AFF]">Отмена</button><span className="font-bold">{addMode === 'booking' ? 'Новая запись' : 'Перерыв'}</span><button onClick={handleManualAdd} className="font-bold text-[#007AFF]">{isSubmitting ? "..." : "Готово"}</button></div>
-
-            {/* ТАБЫ */}
             <div className="px-5 pt-4 pb-2">
                 <div className="flex bg-[#E3E3E8] p-1 rounded-xl">
                     <button onClick={() => setAddMode('booking')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg transition-all ${addMode === 'booking' ? 'bg-white shadow-sm text-black' : 'text-[#8E8E93]'}`}>Клиент</button>
                     <button onClick={() => setAddMode('block')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg transition-all ${addMode === 'block' ? 'bg-white shadow-sm text-black' : 'text-[#8E8E93]'}`}>Перерыв</button>
                 </div>
             </div>
-
             <div className="px-5 mt-2 space-y-4 overflow-y-auto">
               {addMode === 'booking' ? (
                   <>
@@ -300,7 +305,6 @@ export function MasterDashboardPage() {
                       </div>
                   </div>
               )}
-
               <div className="grid grid-cols-2 gap-3"><input type="date" className="p-3 rounded-xl outline-none text-center bg-white" value={newApp.date} onChange={e => setNewApp({...newApp, date: e.target.value})} /><input type="time" className="p-3 rounded-xl outline-none text-center bg-white" value={newApp.time} onChange={e => setNewApp({...newApp, time: e.target.value})} /></div>
             </div>
           </div>
@@ -313,18 +317,11 @@ export function MasterDashboardPage() {
 function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointment, onStatusUpdate: (id: string, s: Appointment['status']) => void, onDeleteBlock: (id: string) => void }) {
   const [ex, setEx] = useState(false);
 
-  // 🛑 Рендер для ПЕРЕРЫВА
   if (app.status === 'blocked') {
       const bTime = parseDate(app.start_time);
       return (
         <div className="bg-[#E3E3E8] rounded-2xl border border-slate-200 p-4 flex items-center justify-between opacity-80">
-            <div className="flex items-center gap-4">
-                <div className="font-bold text-lg w-12 text-center text-[#8E8E93]">{format(bTime, 'HH:mm')}</div>
-                <div className="w-[1px] h-8 bg-slate-300" />
-                <div className="flex items-center gap-2 text-[#8E8E93] font-bold">
-                    <Coffee size={18} /> Перерыв
-                </div>
-            </div>
+            <div className="flex items-center gap-4"><div className="font-bold text-lg w-12 text-center text-[#8E8E93]">{format(bTime, 'HH:mm')}</div><div className="w-[1px] h-8 bg-slate-300" /><div className="flex items-center gap-2 text-[#8E8E93] font-bold"><Coffee size={18} /> Перерыв</div></div>
             <button onClick={() => onDeleteBlock(app.id)} className="text-[#FF3B30] text-xs font-bold">Удалить</button>
         </div>
       );
@@ -334,6 +331,16 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
   const sTime = parseDate(app.start_time);
   const cfg: any = { pending: { bg: '#FFF4D6', text: '#855E00', lbl: 'НОВАЯ' }, confirmed: { bg: '#E3F2FF', text: '#007AFF', lbl: 'ПРИНЯТА' }, completed: { bg: '#E8F5E9', text: '#2E7D32', lbl: 'ГОТОВО' }, canceled: { bg: '#FFEBEE', text: '#C62828', lbl: 'ОТМЕНА' } }[app.status];
 
+  // Данные для кнопок связи
+  let tgUsername = null;
+  if (app.client_tg_user) {
+    const u = typeof app.client_tg_user === 'string' ? JSON.parse(app.client_tg_user) : app.client_tg_user;
+    tgUsername = u?.username;
+  }
+  const cleanPhone = app.client_phone.replace(/[^0-9+]/g, '');
+  const chatLink = tgUsername ? `https://t.me/${tgUsername}` : `https://wa.me/${cleanPhone}`;
+  const isTelegram = !!tgUsername;
+
   return (
     <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
       <div className="p-4 flex items-center justify-between" onClick={() => setEx(!ex)}>
@@ -342,7 +349,14 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
       </div>
       {ex && (
         <div className="px-4 pb-4 space-y-4 animate-in slide-in-from-top-1">
-          <div className="pt-3 border-t flex gap-4"><div className="w-16 h-16 rounded-xl bg-slate-50 overflow-hidden shrink-0">{sInfo?.image_url ? <img src={sInfo.image_url} className="w-full h-full object-cover" /> : <Scissors className="m-auto mt-4 opacity-10" />}</div><div className="space-y-1"><div className="font-bold text-sm">{app.pet_breed}</div><div className="text-xs bg-slate-50 p-2 rounded-lg">{sInfo?.title} • {sInfo?.price} ₸</div><div className="text-xs text-slate-400">Владелец: {app.client_name} ({app.client_phone})</div></div></div>
+          <div className="pt-3 border-t flex gap-4"><div className="w-16 h-16 rounded-xl bg-slate-50 overflow-hidden shrink-0">{sInfo?.image_url ? <img src={sInfo.image_url} className="w-full h-full object-cover" /> : <Scissors className="m-auto mt-4 opacity-10" />}</div><div className="space-y-1"><div className="font-bold text-sm">{app.pet_breed}</div><div className="text-xs bg-slate-50 p-2 rounded-lg">{sInfo?.title} • {sInfo?.price} ₸</div><div className="text-xs text-slate-400">Владелец: {app.client_name}</div></div></div>
+
+          {/* 👇 ВЕРНУЛ КНОПКИ СВЯЗИ */}
+          <div className="flex gap-2">
+             <button onClick={() => { navigator.clipboard.writeText(app.client_phone); toast.success("Скопировано"); window.location.href=`tel:${cleanPhone}`; }} className="flex-1 bg-slate-50 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm active:scale-95"><Copy size={14}/> {app.client_phone}</button>
+             <a href={chatLink} target="_blank" className={`w-14 flex items-center justify-center rounded-xl active:scale-95 ${isTelegram ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}><MessageSquare size={20}/></a>
+          </div>
+
           <div className="flex gap-2 border-t pt-3">{app.status === 'pending' ? <><button onClick={() => onStatusUpdate(app.id, 'confirmed')} className="flex-1 bg-[#007AFF] text-white py-2 rounded-xl font-bold">Принять</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="flex-1 bg-slate-50 text-red-500 py-2 rounded-xl font-bold">Отмена</button></> : app.status === 'confirmed' ? <><button onClick={() => onStatusUpdate(app.id, 'completed')} className="flex-1 bg-green-600 text-white py-2 rounded-xl font-bold">Готово</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="flex-1 bg-slate-50 text-red-500 py-2 rounded-xl font-bold">Отмена</button></> : null}</div>
         </div>
       )}
