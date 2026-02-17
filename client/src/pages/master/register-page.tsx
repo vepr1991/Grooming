@@ -12,8 +12,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
+
+// 👇 URL ТВОЕГО БЕКЕНДА
+const BACKEND_URL = "https://grooming-tma.onrender.com";
 
 export function MasterRegisterPage() {
   const navigate = useNavigate();
@@ -32,7 +34,7 @@ export function MasterRegisterPage() {
   });
 
   useEffect(() => {
-    // Получаем данные из Телеграма (твоя логика)
+    // Получаем данные из Телеграма
     // @ts-ignore
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
 
@@ -43,7 +45,7 @@ export function MasterRegisterPage() {
         telegramName: tgUser.first_name
       }));
     } else {
-      // Для тестов в браузере можно раскомментировать:
+      // ДЛЯ ТЕСТОВ (можно удалить потом)
       // setFormData(prev => ({ ...prev, telegramId: 12345, telegramName: "Тест" }));
     }
   }, []);
@@ -58,42 +60,43 @@ export function MasterRegisterPage() {
     const toastId = toast.loading("Создаем ваш салон...");
 
     try {
-      // 1. Создаем салон (с твоими полями slug и telegram_chat_id)
-      const { data: salon, error: salonError } = await supabase
-        .from('salons')
-        .insert([{
+      // 1. Создаем салон через БЕКЕНД
+      const registerPayload = {
+          telegram_chat_id: formData.telegramId,
           name: formData.name,
           address: formData.address,
           phone: formData.phone,
-          telegram_chat_id: formData.telegramId,
-          slug: `salon_${formData.telegramId}_${Date.now()}`,
-          slot_step: formData.slot_step,
-          schedule: [
-            { day: "Пн", isWorking: true, hours: { start: "10:00", end: "20:00" } },
-            { day: "Вт", isWorking: true, hours: { start: "10:00", end: "20:00" } },
-            { day: "Ср", isWorking: true, hours: { start: "10:00", end: "20:00" } },
-            { day: "Чт", isWorking: true, hours: { start: "10:00", end: "20:00" } },
-            { day: "Пт", isWorking: true, hours: { start: "10:00", end: "20:00" } },
-            { day: "Сб", isWorking: false, hours: { start: "10:00", end: "18:00" } },
-            { day: "Вс", isWorking: false, hours: { start: "10:00", end: "18:00" } }
-          ]
-        }])
-        .select()
-        .single();
+          slot_step: formData.slot_step
+      };
 
-      if (salonError) throw salonError;
+      const salonRes = await fetch(`${BACKEND_URL}/api/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(registerPayload)
+      });
 
-      // 2. Добавляем первую услугу, чтобы мастер сразу мог работать
-      const { error: serviceError } = await supabase
-        .from('services')
-        .insert([{
-          salon_id: salon.id,
-          title: formData.firstService.title,
-          price: formData.firstService.price,
-          duration_minutes: formData.firstService.duration
-        }]);
+      if (!salonRes.ok) throw new Error("Ошибка при регистрации салона");
 
-      if (serviceError) throw serviceError;
+      const salonData = await salonRes.json();
+      const salon = salonData.data;
+
+      // 2. Добавляем первую услугу через БЕКЕНД
+      if (formData.firstService.title) {
+          const servicePayload = {
+              salon_id: salon.id,
+              title: formData.firstService.title,
+              price: Number(formData.firstService.price),
+              duration_minutes: Number(formData.firstService.duration),
+              description: "Базовая услуга",
+              image_url: ""
+          };
+
+          await fetch(`${BACKEND_URL}/api/services`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(servicePayload)
+          });
+      }
 
       localStorage.setItem("salon_id", salon.id);
       toast.success("Салон успешно создан! 🚀", { id: toastId });

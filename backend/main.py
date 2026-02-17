@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="Grooming API", version="2.5", lifespan=lifespan)
+app = FastAPI(title="Grooming API", version="2.6", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -96,6 +96,14 @@ class StatusUpdate(BaseModel):
 
 
 # Модели для Салонов
+class SalonCreate(BaseModel):
+    telegram_chat_id: int
+    name: str
+    address: Optional[str] = ""
+    phone: Optional[str] = ""
+    slot_step: Optional[int] = 30
+
+
 class SalonUpdate(BaseModel):
     name: Optional[str] = None
     address: Optional[str] = None
@@ -230,7 +238,7 @@ def send_client_confirmation(appointment_id: str):
 
 @app.get("/")
 def health_check():
-    return {"status": "active", "service": "Grooming Backend v2.5"}
+    return {"status": "active", "service": "Grooming Backend v2.6"}
 
 
 @app.get("/api/user-status/{tg_id}")
@@ -304,11 +312,59 @@ async def update_appointment_status(appointment_id: str, payload: StatusUpdate, 
 
 # --- ЭНДПОИНТЫ УПРАВЛЕНИЯ САЛОНОМ ---
 
-# 1. Обновление профиля салона
+# 1. Регистрация нового салона
+@app.post("/api/register")
+async def register_salon(payload: SalonCreate):
+    try:
+        # Проверяем, нет ли уже салона с таким Telegram ID
+        existing = supabase.table("salons").select("id").eq("telegram_chat_id", payload.telegram_chat_id).execute()
+        if existing.data and len(existing.data) > 0:
+            return {"success": True, "data": existing.data[0], "message": "Салон уже существует"}
+
+        # Создаем новый салон
+        slug_val = f"salon_{payload.telegram_chat_id}_{int(time.time())}"
+
+        # Дефолтное расписание (Пн-Пт 10-20, Сб-Вс Выходной)
+        default_schedule = [
+            {"day": "Пн", "hours": {"start": "10:00", "end": "20:00"}, "isWorking": True},
+            {"day": "Вт", "hours": {"start": "10:00", "end": "20:00"}, "isWorking": True},
+            {"day": "Ср", "hours": {"start": "10:00", "end": "20:00"}, "isWorking": True},
+            {"day": "Чт", "hours": {"start": "10:00", "end": "20:00"}, "isWorking": True},
+            {"day": "Пт", "hours": {"start": "10:00", "end": "20:00"}, "isWorking": True},
+            {"day": "Сб", "hours": {"start": "10:00", "end": "18:00"}, "isWorking": False},
+            {"day": "Вс", "hours": {"start": "10:00", "end": "18:00"}, "isWorking": False}
+        ]
+
+        new_salon = {
+            "telegram_chat_id": payload.telegram_chat_id,
+            "name": payload.name,
+            "address": payload.address,
+            "phone": payload.phone,
+            "slug": slug_val,
+            "is_active": True,
+            "work_start": "10:00",
+            "work_end": "20:00",
+            "slot_step": payload.slot_step or 30,
+            "schedule": json.dumps(default_schedule)
+        }
+
+        res = supabase.table("salons").insert(new_salon).execute()
+
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Не удалось создать салон")
+
+        logger.info(f"Новый салон зарегистрирован: {payload.name} (TG: {payload.telegram_chat_id})")
+        return {"success": True, "data": res.data[0]}
+
+    except Exception as e:
+        logger.error(f"Error registering salon: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 2. Обновление профиля салона
 @app.patch("/api/salons/{salon_id}")
 async def update_salon_profile(salon_id: str, payload: SalonUpdate):
     try:
-        # exclude_unset=True означает, что мы обновляем только те поля, которые прислали
         data = payload.dict(exclude_unset=True)
         res = supabase.table("salons").update(data).eq("id", salon_id).execute()
         if not res.data:
@@ -319,12 +375,11 @@ async def update_salon_profile(salon_id: str, payload: SalonUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 2. Создание услуги
+# 3. Создание услуги
 @app.post("/api/services")
 async def create_service(payload: ServiceCreate):
     try:
         data = payload.dict()
-        # При создании ставим флаг активности
         data["is_active"] = True
         res = supabase.table("services").insert(data).execute()
         if not res.data:
@@ -335,13 +390,11 @@ async def create_service(payload: ServiceCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 3. Удаление услуги (SOFT DELETE)
+# 4. Удаление услуги (SOFT DELETE)
 @app.delete("/api/services/{service_id}")
 async def delete_service(service_id: str):
     try:
-        # Вместо удаления ставим флаг is_active = False
         res = supabase.table("services").update({"is_active": False}).eq("id", service_id).execute()
-
         if not res.data:
             raise HTTPException(status_code=404, detail="Услуга не найдена")
         return {"success": True}
@@ -350,13 +403,12 @@ async def delete_service(service_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 4. Редактирование услуги
+# 5. Редактирование услуги
 @app.patch("/api/services/{service_id}")
 async def update_service(service_id: str, payload: ServiceUpdate):
     try:
         data = payload.dict(exclude_unset=True)
         res = supabase.table("services").update(data).eq("id", service_id).execute()
-
         if not res.data:
             raise HTTPException(status_code=404, detail="Услуга не найдена")
         return {"success": True, "data": res.data[0]}
