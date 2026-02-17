@@ -8,7 +8,7 @@ import hmac
 import hashlib
 from urllib.parse import unquote
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Depends
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="Grooming API", version="3.6", lifespan=lifespan)
+app = FastAPI(title="Grooming API", version="3.7", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -256,7 +256,6 @@ def send_telegram_notification_task(salon_id: str, data: BookingRequest, start_d
 def send_client_notification(appointment_id: str, status_type: str):
     """Уведомление КЛИЕНТУ (Подробное)"""
     try:
-        # Запрашиваем также телефон салона и название услуги
         res = supabase.table("appointments").select("*, salons(name, phone), services(title)").eq("id",
                                                                                                   appointment_id).single().execute()
         if not res.data: return
@@ -274,7 +273,6 @@ def send_client_notification(appointment_id: str, status_type: str):
         start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
         date_str = start_dt.strftime('%d.%m.%Y')
         time_str = start_dt.strftime('%H:%M')
-
         salon_name = appt['salons']['name']
         salon_phone = appt['salons'].get('phone', '')
         service_title = appt['services']['title']
@@ -312,7 +310,7 @@ def send_client_notification(appointment_id: str, status_type: str):
 # --- 6. API Endpoints ---
 
 @app.get("/")
-def health_check(): return {"status": "active", "service": "Grooming Backend v3.6"}
+def health_check(): return {"status": "active", "service": "Grooming Backend v3.7 (Analytics)"}
 
 
 @app.get("/api/user-status/{tg_id}")
@@ -348,6 +346,60 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
     except Exception as e:
         logger.error(f"Book: {e}")
         raise HTTPException(500, "Server Error")
+
+
+# 👇 АНАЛИТИКА (НОВЫЙ ЭНДПОИНТ) 👇
+@app.get("/api/analytics/{salon_id}")
+async def get_analytics(salon_id: str, tg_user_id: Optional[int] = Depends(verify_telegram_data)):
+    # 🔐 Проверка владельца
+    if tg_user_id:
+        check = supabase.table("salons").select("id").eq("id", salon_id).eq("telegram_chat_id", tg_user_id).execute()
+        if not check.data: raise HTTPException(403, "Forbidden")
+
+    try:
+        # Начало текущего месяца
+        today = datetime.now()
+        start_month = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+        # Получаем записи за месяц
+        res = supabase.table("appointments").select("*, services(price)").eq("salon_id", salon_id).gte("start_time",
+                                                                                                       start_month).execute()
+        apps = res.data or []
+
+        total_revenue = 0
+        completed = 0
+        canceled = 0
+        today_revenue = 0
+        daily_map = {}
+        today_str = today.strftime('%Y-%m-%d')
+
+        for app in apps:
+            if app['status'] == 'completed':
+                completed += 1
+                price = app['services']['price'] if app.get('services') else 0
+                total_revenue += price
+
+                d_str = app['start_time'][:10]
+                daily_map[d_str] = daily_map.get(d_str, 0) + price
+
+                if d_str == today_str: today_revenue += price
+            elif app['status'] == 'canceled':
+                canceled += 1
+
+        daily_stats = [{"date": datetime.strptime(k, "%Y-%m-%d").strftime("%d.%m"), "value": v} for k, v in
+                       sorted(daily_map.items())]
+
+        return {
+            "total_revenue": total_revenue,
+            "total_appointments": len(apps),
+            "completed_count": completed,
+            "canceled_count": canceled,
+            "today_revenue": today_revenue,
+            "daily_stats": daily_stats
+        }
+    except Exception as e:
+        logger.error(f"Analytics error: {e}")
+        raise HTTPException(500, str(e))
 
 
 # --- ЗАЩИЩЕННЫЕ МЕТОДЫ ---

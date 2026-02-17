@@ -88,3 +88,14 @@ export const api = {
       body: JSON.stringify({ status })
     }),
 };
+
+// 🟢 Аналитика
+  getAnalytics: (salonId: string) =>
+    request<{
+      total_revenue: number;
+      total_appointments: number;
+      completed_count: number;
+      canceled_count: number;
+      today_revenue: number;
+      daily_stats: Array<{date: string, value: number}>
+    }>(`/api/analytics/${salonId}`),

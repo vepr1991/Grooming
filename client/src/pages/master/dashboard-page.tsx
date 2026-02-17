@@ -2,19 +2,23 @@ import { useEffect, useState } from "react";
 import { format, addMonths, subMonths, isToday, isSameDay } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  MessageSquare,
   RefreshCcw,
-  Scissors,
   Plus,
   User,
   Clock,
   Calendar as CalendarIcon,
+  PawPrint,
+  Wallet,
+  TrendingUp,
+  Ban,
+  CheckCircle2,
+  ChevronDown,
+  Scissors,
   Copy,
-  Loader2,
-  PawPrint
+  MessageSquare,
+  BarChart3
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,6 +26,7 @@ import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { api } from "@/lib/api";
 
+// ... (Типы Appointment, Service и parseDate оставляем как были)
 type Appointment = {
   id: string;
   client_name: string;
@@ -48,16 +53,19 @@ const parseDate = (dateStr: string) => {
 };
 
 export function MasterDashboardPage() {
-  const [view, setView] = useState<'agenda' | 'calendar'>('agenda');
+  const [view, setView] = useState<'agenda' | 'calendar' | 'stats'>('agenda'); // Добавили 'stats'
   const [filter, setFilter] = useState<'pending' | 'history'>('pending');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
+
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<any>(null); // Данные статистики
 
+  const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [newApp, setNewApp] = useState({
     client_name: "", client_phone: "", pet_name: "", pet_breed: "", service_id: "",
     date: format(new Date(), "yyyy-MM-dd"), time: format(new Date(), "HH:mm")
@@ -65,10 +73,14 @@ export function MasterDashboardPage() {
 
   const salonId = localStorage.getItem("salon_id");
 
+  const loadAllData = () => {
+    fetchAppointments();
+    if (view === 'stats') fetchStats();
+  };
+
   const fetchAppointments = async () => {
     if (!salonId) return;
     setLoading(true);
-    // 👇 ИСПРАВЛЕНИЕ 1: Добавил image_url в запрос
     const { data, error } = await supabase.from('appointments')
       .select(`*, services (title, price, duration_minutes, image_url)`)
       .eq('salon_id', salonId);
@@ -81,24 +93,39 @@ export function MasterDashboardPage() {
     if (!salonId) return;
     const { data } = await supabase.from('services')
       .select('id, title, price, duration_minutes')
-      .eq('salon_id', salonId)
-      .eq('is_active', true);
+      .eq('salon_id', salonId).eq('is_active', true);
     if (data) setServices(data);
   };
 
-  useEffect(() => { fetchAppointments(); fetchServices(); }, [salonId]);
+  const fetchStats = async () => {
+    if (!salonId) return;
+    try {
+      const data = await api.getAnalytics(salonId);
+      setStats(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
+  useEffect(() => {
+    fetchServices();
+    fetchAppointments();
+  }, [salonId]);
+
+  // Загружаем статистику только когда открываем вкладку
+  useEffect(() => {
+    if (view === 'stats') fetchStats();
+  }, [view]);
+
+  // ... (функции handleManualAdd и updateStatus оставляем без изменений)
   const handleManualAdd = async () => {
     if (!newApp.client_name || !newApp.service_id || !newApp.client_phone) {
       toast.error("Заполните имя, телефон и услугу");
       return;
     }
-
     const selectedS = services.find(s => s.id === newApp.service_id);
     if (!selectedS || !salonId) return;
-
     setIsSubmitting(true);
-
     try {
       const payload = {
         salonId: salonId,
@@ -114,26 +141,16 @@ export function MasterDashboardPage() {
           phone: newApp.client_phone,
           telegram_user: null
         },
-        pet: {
-          name: newApp.pet_name,
-          petBreed: newApp.pet_breed
-        }
+        pet: { name: newApp.pet_name, petBreed: newApp.pet_breed }
       };
-
       await api.createBooking(payload);
-
       toast.success("Клиент успешно записан!");
       setIsAdding(false);
       setNewApp(prev => ({ ...prev, client_name: "", client_phone: "", pet_name: "", pet_breed: "" }));
       fetchAppointments();
-
     } catch (e: any) {
-      console.error(e);
-      if (e.message && e.message.includes("409")) {
-          toast.error("Это время уже занято! ⚠️");
-      } else {
-          toast.error(e.message || "Не удалось создать запись");
-      }
+      if (e.message && e.message.includes("409")) toast.error("Это время уже занято! ⚠️");
+      else toast.error(e.message || "Не удалось создать запись");
     } finally {
       setIsSubmitting(false);
     }
@@ -150,6 +167,7 @@ export function MasterDashboardPage() {
     }
   };
 
+  // Фильтры и Календарь (оставляем старые)
   const filteredApps = appointments
     .filter(app => filter === 'pending' ? app.status === 'pending' : ['confirmed', 'completed', 'canceled'].includes(app.status))
     .sort((a, b) => {
@@ -162,36 +180,30 @@ export function MasterDashboardPage() {
     isSameDay(parseDate(app.start_time), selectedDate) && app.status === 'pending'
   );
 
+  // Отрисовка календаря (та же самая, скопируй её из предыдущего файла, чтобы не дублировать тут много кода)
+  // ... renderCalendar ...
   const renderCalendar = () => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDay = new Date(year, month, 1).getDay();
     const offset = firstDay === 0 ? 6 : firstDay - 1;
-
     const days: React.ReactNode[] = [];
-
     for (let i = 0; i < offset; i++) days.push(<div key={`prev-${i}`} className="h-12"></div>);
-
     for (let d = 1; d <= daysInMonth; d++) {
       const dateObj = new Date(year, month, d);
       const isSel = isSameDay(dateObj, selectedDate);
-
       const hasPending = appointments.some(a => isSameDay(parseDate(a.start_time), dateObj) && a.status === 'pending');
       const isCurrToday = isToday(dateObj);
-
       days.push(
         <div key={d} className="relative flex items-center justify-center h-12 cursor-pointer" onClick={() => setSelectedDate(dateObj)}>
           <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
             isSel ? 'bg-[#007AFF] text-white' : isCurrToday ? 'text-[#007AFF] bg-[#007AFF]/10' : 'text-black'
-          }`}>
-            {d}
-          </div>
+          }`}>{d}</div>
           {hasPending && !isSel && <div className="absolute bottom-1 w-1.5 h-1.5 bg-orange-500 rounded-full"></div>}
         </div>
       );
     }
-
     return (
       <div className="bg-white rounded-[16px] p-2 shadow-sm border border-slate-100 mx-5 mt-2">
         <div className="flex justify-between items-center px-4 py-2">
@@ -209,21 +221,105 @@ export function MasterDashboardPage() {
     );
   };
 
+  // 👇 РЕНДЕР СТАТИСТИКИ
+  const renderStats = () => {
+    if (!stats) return <div className="text-center py-20"><Loader2 className="animate-spin text-[#007AFF] mx-auto"/></div>;
+
+    return (
+      <div className="px-5 space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
+        {/* Карточка: Выручка за месяц */}
+        <div className="bg-gradient-to-br from-[#007AFF] to-[#0055FF] rounded-[24px] p-6 text-white shadow-lg shadow-blue-200">
+          <div className="flex items-center justify-between opacity-80 mb-1">
+            <span className="text-[13px] font-bold uppercase tracking-wide">Выручка (Февраль)</span>
+            <Wallet size={20} />
+          </div>
+          <div className="text-[34px] font-extrabold tracking-tight">
+            {stats.total_revenue.toLocaleString()} ₸
+          </div>
+          <div className="mt-4 flex items-center gap-2 bg-white/20 w-fit px-3 py-1 rounded-full text-[13px] font-medium backdrop-blur-sm">
+            <TrendingUp size={14} /> +{stats.today_revenue.toLocaleString()} ₸ сегодня
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-white p-4 rounded-[20px] border border-slate-100 shadow-sm flex flex-col justify-between h-28">
+            <div className="flex items-center gap-2 text-[#34C759]">
+              <CheckCircle2 size={18} />
+              <span className="text-[12px] font-bold uppercase text-[#8E8E93]">Завершено</span>
+            </div>
+            <span className="text-[28px] font-black text-black">{stats.completed_count}</span>
+          </div>
+
+          <div className="bg-white p-4 rounded-[20px] border border-slate-100 shadow-sm flex flex-col justify-between h-28">
+            <div className="flex items-center gap-2 text-[#FF3B30]">
+              <Ban size={18} />
+              <span className="text-[12px] font-bold uppercase text-[#8E8E93]">Отменены</span>
+            </div>
+            <span className="text-[28px] font-black text-black">{stats.canceled_count}</span>
+          </div>
+        </div>
+
+        {/* График (Простой CSS) */}
+        <div className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="bg-[#007AFF]/10 p-2 rounded-xl text-[#007AFF]"><BarChart3 size={20}/></div>
+            <h3 className="text-[16px] font-bold">Динамика по дням</h3>
+          </div>
+
+          <div className="flex items-end gap-2 h-32 w-full overflow-x-auto no-scrollbar pb-2">
+            {stats.daily_stats.length === 0 ? (
+               <div className="w-full text-center text-[#8E8E93] text-[13px]">Нет данных за этот месяц</div>
+            ) : (
+                stats.daily_stats.map((d: any, i: number) => {
+                // Нормализация высоты (макс высота 100%)
+                const maxVal = Math.max(...stats.daily_stats.map((s:any) => s.value));
+                const height = maxVal > 0 ? (d.value / maxVal) * 100 : 0;
+
+                return (
+                    <div key={i} className="flex flex-col items-center gap-2 min-w-[30px] flex-1">
+                    <div className="w-full bg-[#F2F2F7] rounded-t-[6px] relative group h-full flex items-end overflow-hidden">
+                        <div
+                            style={{ height: `${height}%` }}
+                            className="w-full bg-[#007AFF] rounded-t-[6px] transition-all duration-500"
+                        ></div>
+                        {/* Тултип с суммой */}
+                        <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+                            {d.value} ₸
+                        </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-[#8E8E93]">{d.date}</span>
+                    </div>
+                );
+                })
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6 pt-10 pb-28 bg-[#F2F2F7] min-h-screen font-sans">
       <div className="px-5 flex justify-between items-end mb-4">
-        <h1 className="text-[32px] font-extrabold tracking-tight text-black">Записи</h1>
+        <h1 className="text-[32px] font-extrabold tracking-tight text-black">
+            {view === 'stats' ? 'Финансы' : 'Записи'}
+        </h1>
         <div className="flex gap-2">
-          <button onClick={() => setIsAdding(true)} className="w-10 h-10 rounded-full bg-[#007AFF] text-white flex items-center justify-center shadow-lg active:scale-90 transition-all"><Plus size={24}/></button>
-          <button onClick={fetchAppointments} className="w-10 h-10 rounded-full bg-white border border-slate-200 text-[#8E8E93] flex items-center justify-center shadow-sm active:opacity-50 transition-opacity"><RefreshCcw size={20} className={loading ? "animate-spin" : ""}/></button>
+          {view !== 'stats' && (
+             <button onClick={() => setIsAdding(true)} className="w-10 h-10 rounded-full bg-[#007AFF] text-white flex items-center justify-center shadow-lg active:scale-90 transition-all"><Plus size={24}/></button>
+          )}
+          <button onClick={loadAllData} className="w-10 h-10 rounded-full bg-white border border-slate-200 text-[#8E8E93] flex items-center justify-center shadow-sm active:opacity-50 transition-opacity"><RefreshCcw size={20} className={loading ? "animate-spin" : ""}/></button>
         </div>
       </div>
 
       <div className="px-5 space-y-4">
+        {/* Переключатель вкладок */}
         <div className="flex w-full bg-[#E3E3E8] p-1 rounded-xl border border-slate-200 shadow-sm">
           <button onClick={() => setView('agenda')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-[8px] transition-all ${view === 'agenda' ? 'bg-white shadow-sm text-black' : 'text-[#8E8E93]'}`}>Список</button>
           <button onClick={() => setView('calendar')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-[8px] transition-all ${view === 'calendar' ? 'bg-white shadow-sm text-black' : 'text-[#8E8E93]'}`}>Календарь</button>
+          <button onClick={() => setView('stats')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-[8px] transition-all ${view === 'stats' ? 'bg-white shadow-sm text-black' : 'text-[#8E8E93]'}`}>Финансы</button>
         </div>
+
         {view === 'agenda' && (
           <div className="flex w-full bg-white/50 p-1 rounded-xl border border-slate-200 shadow-sm">
             <button onClick={() => setFilter('pending')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg transition-all ${filter === 'pending' ? 'text-[#007AFF] bg-white shadow-sm' : 'text-[#8E8E93]'}`}>Ожидают</button>
@@ -232,11 +328,13 @@ export function MasterDashboardPage() {
         )}
       </div>
 
-      {view === 'agenda' ? (
+      {view === 'agenda' && (
         <div className="px-5 space-y-3">
           {loading ? <div className="text-center py-20 text-[#8E8E93]">Загрузка...</div> : filteredApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} />)}
         </div>
-      ) : (
+      )}
+
+      {view === 'calendar' && (
         <div className="space-y-4">
           {renderCalendar()}
           <div className="px-5 pt-2">
@@ -251,6 +349,8 @@ export function MasterDashboardPage() {
           </div>
         </div>
       )}
+
+      {view === 'stats' && renderStats()}
 
       {isAdding && (
         <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-[2px] flex items-end justify-center p-0">
@@ -269,6 +369,7 @@ export function MasterDashboardPage() {
   );
 }
 
+// ... Компонент AppointmentCard (без изменений, но он должен быть в файле) ...
 function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUpdate: (id: string, s: Appointment['status']) => void }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -313,7 +414,7 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
       {expanded && (
         <div className="px-4 pb-4 bg-white animate-in slide-in-from-top-2">
           <div className="flex gap-4 py-3 border-t border-[#F2F2F7]">
-            {/* 👇 ИСПРАВЛЕНИЕ 2: Отрисовка картинки */}
+            {/* Картинка или заглушка */}
             <div className="w-20 h-20 rounded-2xl bg-[#F2F2F7] flex items-center justify-center shrink-0 overflow-hidden relative border border-slate-100">
               {sInfo?.image_url ? (
                 <img src={sInfo.image_url} className="absolute inset-0 w-full h-full object-cover" alt="Service" />
