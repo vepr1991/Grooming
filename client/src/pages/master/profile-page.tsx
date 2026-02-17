@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Camera, MapPin, Phone, Share, Globe, Save, Scissors, Edit3, Timer, Loader2 } from "lucide-react";
+import { Camera, MapPin, Phone, Share, Globe, Save, Scissors, Edit3, Timer, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { api } from "@/lib/api";
-import { uploadImage } from "@/lib/upload"; // 👈 ВЕРНУЛ ИМПОРТ
+import { uploadImage } from "@/lib/upload";
 
 const BOT_USERNAME = "pet_groom_bot";
 const APP_NAME = "app";
@@ -19,7 +19,8 @@ type ScheduleDay = {
 export function MasterProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false); // 👈 ВЕРНУЛ СОСТОЯНИЕ
+  const [uploading, setUploading] = useState(false);
+  const [galleryUploading, setGalleryUploading] = useState(false); // 👈 Загрузка для галереи
   const [isEditing, setIsEditing] = useState(false);
   const [salonId] = useState<string | null>(localStorage.getItem("salon_id"));
 
@@ -29,6 +30,7 @@ export function MasterProfilePage() {
     phone: "",
     description: "",
     photo_url: "",
+    gallery: [] as string[], // 👈 Массив для фото работ
     schedule: [] as ScheduleDay[],
     slot_step: 30
   });
@@ -44,11 +46,15 @@ export function MasterProfilePage() {
 
         if (data) {
           let parsedSchedule = [];
-          if (typeof data.schedule === 'string') {
-              try { parsedSchedule = JSON.parse(data.schedule); } catch(e) { parsedSchedule = []; }
-          } else {
-              parsedSchedule = data.schedule || [];
-          }
+          try {
+            parsedSchedule = typeof data.schedule === 'string' ? JSON.parse(data.schedule) : data.schedule || [];
+          } catch(e) { parsedSchedule = []; }
+
+          // 👇 Парсим галерею (безопасно)
+          let parsedGallery = [];
+          try {
+             parsedGallery = typeof data.gallery === 'string' ? JSON.parse(data.gallery) : data.gallery || [];
+          } catch(e) { parsedGallery = []; }
 
           setFormData({
             name: data.name || "",
@@ -56,6 +62,7 @@ export function MasterProfilePage() {
             phone: data.phone || "",
             description: data.description || "",
             photo_url: data.photo_url || "",
+            gallery: Array.isArray(parsedGallery) ? parsedGallery : [], // Убеждаемся, что это массив
             schedule: parsedSchedule,
             slot_step: data.slot_step || 30
           });
@@ -66,22 +73,47 @@ export function MasterProfilePage() {
     }
   }, [salonId]);
 
-  // 👇 ВЕРНУЛ ФУНКЦИЮ ЗАГРУЗКИ ФОТО
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Загрузка АВАТАРА (Главное фото)
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-
     setUploading(true);
     try {
       const file = e.target.files[0];
       const url = await uploadImage(file);
       setFormData(prev => ({ ...prev, photo_url: url }));
-      toast.success("Фото загружено!");
+      toast.success("Аватар обновлен!");
     } catch (error) {
       console.error(error);
       toast.error("Ошибка загрузки фото");
     } finally {
       setUploading(false);
     }
+  };
+
+  // 👇 Загрузка фото в ПОРТФОЛИО
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    setGalleryUploading(true);
+    try {
+      const file = e.target.files[0];
+      const url = await uploadImage(file);
+      // Добавляем новое фото к существующим
+      setFormData(prev => ({ ...prev, gallery: [...prev.gallery, url] }));
+      toast.success("Фото добавлено в портфолио");
+    } catch (error) {
+      console.error(error);
+      toast.error("Ошибка загрузки");
+    } finally {
+      setGalleryUploading(false);
+    }
+  };
+
+  // 👇 Удаление фото из портфолио
+  const removeGalleryPhoto = (index: number) => {
+      setFormData(prev => ({
+          ...prev,
+          gallery: prev.gallery.filter((_, i) => i !== index)
+      }));
   };
 
   const handleSave = async () => {
@@ -91,7 +123,7 @@ export function MasterProfilePage() {
     }
     if (!salonId) return;
 
-    setSaving(true); // Используем saving для кнопки
+    setSaving(true);
 
     try {
       const payload = {
@@ -99,7 +131,8 @@ export function MasterProfilePage() {
         address: formData.address,
         phone: formData.phone,
         description: formData.description,
-        photo_url: formData.photo_url, // Не забываем сохранять URL
+        photo_url: formData.photo_url,
+        gallery: formData.gallery, // 👈 Отправляем массив фото
         schedule: JSON.stringify(formData.schedule),
         slot_step: formData.slot_step
       };
@@ -117,24 +150,15 @@ export function MasterProfilePage() {
     }
   };
 
+  // Вспомогательные функции
   const toggleDay = (dayName: string) => {
     if (!isEditing) return;
-    setFormData(prev => ({
-      ...prev,
-      schedule: prev.schedule.map(d =>
-        d.day === dayName ? { ...d, isWorking: !d.isWorking } : d
-      )
-    }));
+    setFormData(prev => ({ ...prev, schedule: prev.schedule.map(d => d.day === dayName ? { ...d, isWorking: !d.isWorking } : d) }));
   };
 
   const updateHours = (dayName: string, type: 'start' | 'end', value: string) => {
     if (!isEditing) return;
-    setFormData(prev => ({
-      ...prev,
-      schedule: prev.schedule.map(d =>
-        d.day === dayName ? { ...d, hours: { ...d.hours, [type]: value } } : d
-      )
-    }));
+    setFormData(prev => ({ ...prev, schedule: prev.schedule.map(d => d.day === dayName ? { ...d, hours: { ...d.hours, [type]: value } } : d) }));
   };
 
   const handleCopyLink = () => {
@@ -162,6 +186,7 @@ export function MasterProfilePage() {
          )}
       </div>
 
+      {/* АВАТАР (ОСНОВНОЕ ФОТО) */}
       <div className="flex flex-col items-center mb-4 px-5">
         <div className="relative group">
           <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-white shadow-xl bg-white flex items-center justify-center relative">
@@ -171,7 +196,6 @@ export function MasterProfilePage() {
                <Scissors size={40} className="text-[#C7C7CC]" />
              )}
 
-             {/* Индикатор загрузки */}
              {uploading && (
                <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-10">
                  <Loader2 className="animate-spin text-white" />
@@ -179,7 +203,6 @@ export function MasterProfilePage() {
              )}
           </div>
 
-          {/* 👇 КНОПКА ЗАГРУЗКИ ФОТО (Только в режиме редактирования) */}
           {isEditing && (
             <label className="absolute bottom-0 right-0 bg-white p-2.5 rounded-full shadow-lg text-[#007AFF] border border-slate-100 cursor-pointer active:scale-90 transition-all z-20">
               <Camera size={20} strokeWidth={2.5} />
@@ -187,7 +210,7 @@ export function MasterProfilePage() {
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={handleFileChange}
+                onChange={handleAvatarChange}
                 disabled={uploading}
               />
             </label>
@@ -195,11 +218,54 @@ export function MasterProfilePage() {
         </div>
 
         {isEditing && (
-            <p className="text-[12px] text-[#8E8E93] mt-3 font-medium">Нажмите на камеру, чтобы изменить фото</p>
+            <p className="text-[12px] text-[#8E8E93] mt-3 font-medium">Главное фото профиля</p>
         )}
       </div>
 
       <div className="px-5 space-y-7">
+
+        {/* 👇 НОВАЯ СЕКЦИЯ: ПОРТФОЛИО */}
+        <section className="space-y-2">
+            <h2 className="text-[12px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Портфолио работ</h2>
+            <div className="bg-white rounded-[16px] p-4 shadow-sm border border-slate-100">
+                {formData.gallery.length === 0 && !isEditing && (
+                    <div className="text-center text-slate-400 py-4 text-[13px]">Нет загруженных работ</div>
+                )}
+
+                <div className="grid grid-cols-3 gap-2">
+                    {/* Список фото */}
+                    {formData.gallery.map((url, idx) => (
+                        <div key={idx} className="relative aspect-square rounded-xl overflow-hidden bg-slate-100 group">
+                            <img src={url} className="w-full h-full object-cover" alt="Work" />
+                            {isEditing && (
+                                <button
+                                    onClick={() => removeGalleryPhoto(idx)}
+                                    className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full active:scale-90 transition-transform"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
+                        </div>
+                    ))}
+
+                    {/* Кнопка добавления */}
+                    {isEditing && (
+                        <label className="aspect-square rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-1 text-[#007AFF] cursor-pointer hover:bg-slate-50 transition-colors active:scale-95">
+                            {galleryUploading ? <Loader2 className="animate-spin" size={24}/> : <Plus size={24}/>}
+                            <span className="text-[10px] font-bold uppercase">Добавить</span>
+                            <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleGalleryUpload}
+                                disabled={galleryUploading}
+                            />
+                        </label>
+                    )}
+                </div>
+            </div>
+        </section>
+
         {/* Форма с данными */}
         <div className="space-y-4">
           <div className="space-y-1.5">

@@ -115,6 +115,7 @@ class SalonUpdate(BaseModel):
     description: Optional[str] = None
     schedule: Optional[str] = None
     photo_url: Optional[str] = None
+    gallery: Optional[List[str]] = None
     slot_step: Optional[int] = None
 
 
