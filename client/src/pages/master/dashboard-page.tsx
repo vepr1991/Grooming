@@ -17,9 +17,9 @@ import {
   MessageSquare,
   BarChart3,
   Coffee,
-  Trash2 // 👈 Добавил иконку урны
+  Trash2
 } from "lucide-react";
-import { toast } from "sonner"; // Sonner уже умеет делать кнопки в тостах
+import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -60,9 +60,13 @@ export function MasterDashboardPage() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // Modals state
   const [isAdding, setIsAdding] = useState(false);
   const [addMode, setAddMode] = useState<'booking' | 'block'>('booking');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 👇 Состояние для удаления перерыва
+  const [blockToDelete, setBlockToDelete] = useState<string | null>(null);
 
   const [newApp, setNewApp] = useState({
     client_name: "", client_phone: "", pet_name: "", pet_breed: "", service_id: "",
@@ -158,20 +162,20 @@ export function MasterDashboardPage() {
     catch (e) { toast.error("Ошибка", { id: tId }); }
   };
 
-  // 👇 ИСПРАВЛЕННАЯ ЛОГИКА УДАЛЕНИЯ (Без confirm)
-  const handleDeleteBlock = (id: string) => {
-      toast("Удалить этот перерыв?", {
-        action: {
-          label: "Удалить",
-          onClick: async () => {
-             try {
-                await api.updateAppointmentStatus(id, 'canceled');
-                toast.success("Перерыв удален");
-                fetchAppointments();
-            } catch(e) { toast.error("Ошибка удаления"); }
-          }
-        },
-      });
+  // 👇 Открываем модалку удаления
+  const handleDeleteBlockClick = (id: string) => {
+      setBlockToDelete(id);
+  };
+
+  // 👇 Подтверждение удаления
+  const confirmDeleteBlock = async () => {
+      if (!blockToDelete) return;
+      try {
+          await api.updateAppointmentStatus(blockToDelete, 'canceled');
+          toast.success("Перерыв удален");
+          fetchAppointments();
+      } catch(e) { toast.error("Ошибка удаления"); }
+      finally { setBlockToDelete(null); }
   };
 
   const filteredApps = appointments.filter(app => {
@@ -270,13 +274,13 @@ export function MasterDashboardPage() {
       {view === 'agenda' && (
         <div className="px-5 space-y-4">
           <div className="flex bg-white/50 p-1 rounded-xl shadow-sm"><button onClick={() => setFilter('pending')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg ${filter === 'pending' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>Ожидают</button><button onClick={() => setFilter('history')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg ${filter === 'history' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>История</button></div>
-          <div className="space-y-3">{loading ? <p className="text-center py-10">Загрузка...</p> : filteredApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} onDeleteBlock={handleDeleteBlock} />)}</div>
+          <div className="space-y-3">{loading ? <p className="text-center py-10">Загрузка...</p> : filteredApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} onDeleteBlock={handleDeleteBlockClick} />)}</div>
         </div>
       )}
-      {view === 'calendar' && <div className="space-y-4">{renderCalendar()}<div className="px-5 space-y-3"><h2 className="text-[13px] font-bold text-[#8E8E93] uppercase px-1">{format(selectedDate, 'd MMMM', { locale: ru })}</h2>{calendarPendingApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} onDeleteBlock={handleDeleteBlock} />)}</div></div>}
+      {view === 'calendar' && <div className="space-y-4">{renderCalendar()}<div className="px-5 space-y-3"><h2 className="text-[13px] font-bold text-[#8E8E93] uppercase px-1">{format(selectedDate, 'd MMMM', { locale: ru })}</h2>{calendarPendingApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} onDeleteBlock={handleDeleteBlockClick} />)}</div></div>}
       {view === 'stats' && renderStats()}
 
-      {/* МОДАЛЬНОЕ ОКНО */}
+      {/* МОДАЛЬНОЕ ОКНО ДОБАВЛЕНИЯ */}
       {isAdding && (
         <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-end justify-center">
           <div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[24px] h-[90vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom">
@@ -307,6 +311,35 @@ export function MasterDashboardPage() {
               <div className="grid grid-cols-2 gap-3"><input type="date" className="p-3 rounded-xl outline-none text-center bg-white" value={newApp.date} onChange={e => setNewApp({...newApp, date: e.target.value})} /><input type="time" className="p-3 rounded-xl outline-none text-center bg-white" value={newApp.time} onChange={e => setNewApp({...newApp, time: e.target.value})} /></div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 👇 МОДАЛЬНОЕ ОКНО УДАЛЕНИЯ ПЕРЕРЫВА (ВМЕСТО TOAST) */}
+      {blockToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-sm p-6 rounded-[24px] shadow-2xl animate-in zoom-in-95 duration-200">
+                <div className="w-12 h-12 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Trash2 size={24} />
+                </div>
+                <h3 className="text-xl font-bold text-center mb-2 text-black">Удалить перерыв?</h3>
+                <p className="text-center text-[#8E8E93] mb-6 text-[15px] leading-relaxed">
+                    Это время снова станет доступным для записи клиентов.
+                </p>
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => setBlockToDelete(null)}
+                        className="flex-1 py-3.5 bg-[#F2F2F7] text-black font-bold rounded-[16px] active:scale-95 transition-transform"
+                    >
+                        Отмена
+                    </button>
+                    <button
+                        onClick={confirmDeleteBlock}
+                        className="flex-1 py-3.5 bg-[#FF3B30] text-white font-bold rounded-[16px] active:scale-95 transition-transform shadow-lg shadow-red-100"
+                    >
+                        Удалить
+                    </button>
+                </div>
+            </div>
         </div>
       )}
     </div>
