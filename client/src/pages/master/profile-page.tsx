@@ -4,9 +4,9 @@ import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
-import { api } from "@/lib/api"; // 👈 НОВЫЙ ИМПОРТ
+import { api } from "@/lib/api";
+import { uploadImage } from "@/lib/upload"; // 👈 ВЕРНУЛ ИМПОРТ
 
-// 👇 ТВОИ ДАННЫЕ (Убедись, что они верные)
 const BOT_USERNAME = "pet_groom_bot";
 const APP_NAME = "app";
 
@@ -17,7 +17,9 @@ type ScheduleDay = {
 };
 
 export function MasterProfilePage() {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false); // 👈 ВЕРНУЛ СОСТОЯНИЕ
   const [isEditing, setIsEditing] = useState(false);
   const [salonId] = useState<string | null>(localStorage.getItem("salon_id"));
 
@@ -58,10 +60,29 @@ export function MasterProfilePage() {
             slot_step: data.slot_step || 30
           });
         }
+        setLoading(false);
       }
       loadSalon();
     }
   }, [salonId]);
+
+  // 👇 ВЕРНУЛ ФУНКЦИЮ ЗАГРУЗКИ ФОТО
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+
+    setUploading(true);
+    try {
+      const file = e.target.files[0];
+      const url = await uploadImage(file);
+      setFormData(prev => ({ ...prev, photo_url: url }));
+      toast.success("Фото загружено!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Ошибка загрузки фото");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!formData.name) {
@@ -70,7 +91,7 @@ export function MasterProfilePage() {
     }
     if (!salonId) return;
 
-    setLoading(true);
+    setSaving(true); // Используем saving для кнопки
 
     try {
       const payload = {
@@ -78,11 +99,11 @@ export function MasterProfilePage() {
         address: formData.address,
         phone: formData.phone,
         description: formData.description,
+        photo_url: formData.photo_url, // Не забываем сохранять URL
         schedule: JSON.stringify(formData.schedule),
-        slot_step: formData.slot_step // Добавил slot_step в обновление
+        slot_step: formData.slot_step
       };
 
-      // 👇 ИСПОЛЬЗУЕМ НОВЫЙ API КЛИЕНТ
       await api.updateSalon(salonId, payload);
 
       toast.success("Профиль обновлен! ✨");
@@ -92,7 +113,7 @@ export function MasterProfilePage() {
       console.error(e);
       toast.error(e.message || "Ошибка сохранения");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -128,43 +149,58 @@ export function MasterProfilePage() {
     ${editing ? 'border-[#007AFF]/30 ring-1 ring-[#007AFF]/10' : 'border-slate-200'}
   `;
 
+  if (loading) return <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-[#007AFF]"/></div>;
+
   return (
     <div className="space-y-6 pt-10 pb-32 bg-[#F2F2F7] min-h-screen font-sans">
       <div className="px-5 flex justify-between items-end">
          <h1 className="text-[34px] font-extrabold tracking-tight text-black">Профиль</h1>
          {isEditing && (
-             <button onClick={handleSave} disabled={loading} className="text-[#007AFF] font-bold text-[17px]">
-                 {loading ? <Loader2 className="animate-spin" /> : "Готово"}
+             <button onClick={handleSave} disabled={saving || uploading} className="text-[#007AFF] font-bold text-[17px]">
+                 {saving ? <Loader2 className="animate-spin" /> : "Готово"}
              </button>
          )}
       </div>
 
       <div className="flex flex-col items-center mb-4 px-5">
-        <div className="relative">
-          <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-white shadow-xl bg-white flex items-center justify-center">
+        <div className="relative group">
+          <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-white shadow-xl bg-white flex items-center justify-center relative">
              {formData.photo_url ? (
                <img src={formData.photo_url} className="w-full h-full object-cover" alt="Salon" />
              ) : (
                <Scissors size={40} className="text-[#C7C7CC]" />
              )}
+
+             {/* Индикатор загрузки */}
+             {uploading && (
+               <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-10">
+                 <Loader2 className="animate-spin text-white" />
+               </div>
+             )}
           </div>
+
+          {/* 👇 КНОПКА ЗАГРУЗКИ ФОТО (Только в режиме редактирования) */}
           {isEditing && (
-            <button className="absolute bottom-0 right-0 bg-white p-2.5 rounded-full shadow-lg text-[#007AFF] border border-slate-100 animate-in fade-in zoom-in">
+            <label className="absolute bottom-0 right-0 bg-white p-2.5 rounded-full shadow-lg text-[#007AFF] border border-slate-100 cursor-pointer active:scale-90 transition-all z-20">
               <Camera size={20} strokeWidth={2.5} />
-            </button>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileChange}
+                disabled={uploading}
+              />
+            </label>
           )}
         </div>
+
         {isEditing && (
-          <input
-            placeholder="URL логотипа"
-            value={formData.photo_url}
-            onChange={e => setFormData({ ...formData, photo_url: e.target.value })}
-            className="mt-4 w-full text-center text-[13px] text-[#007AFF] bg-transparent outline-none caret-[#007AFF]"
-          />
+            <p className="text-[12px] text-[#8E8E93] mt-3 font-medium">Нажмите на камеру, чтобы изменить фото</p>
         )}
       </div>
 
       <div className="px-5 space-y-7">
+        {/* Форма с данными */}
         <div className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 flex items-center gap-1.5">
@@ -211,6 +247,7 @@ export function MasterProfilePage() {
           </div>
         </div>
 
+        {/* График работы */}
         <section className="space-y-2">
           <h2 className="text-[12px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">График работы</h2>
           <div className="bg-white rounded-[16px] overflow-hidden shadow-sm border border-slate-100 divide-y divide-[#F2F2F7]">
@@ -263,6 +300,7 @@ export function MasterProfilePage() {
           </div>
         </section>
 
+        {/* Параметры записи */}
         <section className="space-y-2">
           <h2 className="text-[12px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Параметры записи</h2>
           <div className="bg-white rounded-[16px] p-4 shadow-sm border border-slate-100">
@@ -307,6 +345,7 @@ export function MasterProfilePage() {
           </div>
         </div>
 
+        {/* Кнопки действий */}
         <div className="pt-4 space-y-3">
           {!isEditing && (
              <>
@@ -329,10 +368,10 @@ export function MasterProfilePage() {
           {isEditing && (
             <button
                 onClick={handleSave}
-                disabled={loading}
+                disabled={saving || uploading}
                 className="w-full py-4 bg-[#007AFF] text-white rounded-[16px] font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-200 active:scale-95 transition-all"
             >
-                <Save size={20} /> {loading ? "Сохранение..." : "Сохранить изменения"}
+                <Save size={20} /> {saving ? "Сохранение..." : "Сохранить изменения"}
             </button>
           )}
         </div>

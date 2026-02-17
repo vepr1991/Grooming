@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="Grooming API", version="3.9", lifespan=lifespan)
+app = FastAPI(title="Grooming API", version="4.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -88,8 +88,16 @@ class BookingRequest(BaseModel):
     pet: PetInfo
 
 
+class BlockRequest(BaseModel):
+    salonId: str
+    date: str
+    time: str
+    duration_minutes: int = Field(..., gt=0)
+    reason: Optional[str] = "Перерыв"
+
+
 class StatusUpdate(BaseModel):
-    status: str = Field(..., pattern="^(pending|confirmed|completed|canceled)$")
+    status: str = Field(..., pattern="^(pending|confirmed|completed|canceled|blocked)$")
 
 
 class SalonCreate(BaseModel):
@@ -170,8 +178,40 @@ def check_overlap(salon_id: str, start_time: datetime, end_time: datetime) -> bo
         return True
 
 
+# 👇 НОВАЯ ФУНКЦИЯ: Проверка рабочего времени
+def validate_working_hours(salon_id: str, start_dt: datetime, end_dt: datetime):
+    try:
+        res = supabase.table("salons").select("schedule").eq("id", salon_id).single().execute()
+        if not res.data or not res.data.get('schedule'): return  # Если графика нет, разрешаем
+
+        schedule = json.loads(res.data['schedule'])
+        days_map = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        day_key = days_map[start_dt.weekday()]
+
+        day_sched = next((d for d in schedule if d["day"] == day_key), None)
+
+        # 1. Проверяем, рабочий ли день
+        if not day_sched or not day_sched.get("isWorking"):
+            raise HTTPException(400, f"Салон не работает в {day_key}")
+
+        # 2. Проверяем часы
+        work_start = datetime.strptime(day_sched["hours"]["start"], "%H:%M").time()
+        work_end = datetime.strptime(day_sched["hours"]["end"], "%H:%M").time()
+
+        req_start = start_dt.time()
+        req_end = end_dt.time()
+
+        if req_start < work_start or req_end > work_end:
+            raise HTTPException(400, "Время выходит за рамки рабочего графика")
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Schedule check error: {e}")
+        # Не блокируем, если ошибка парсинга, но логируем
+
+
 async def check_upcoming_appointments():
-    """Планировщик напоминаний"""
     logger.info("⏰ Checking for reminders...")
     try:
         now_utc = datetime.now(timezone.utc)
@@ -228,13 +268,20 @@ def send_client_notification(appointment_id: str, status_type: str):
                                                                                                   appointment_id).single().execute()
         if not res.data: return
         appt = res.data
+        if not appt.get("client_tg_user"): return  # Skip if no tg user (e.g. blocked slot)
+
         tg_user = json.loads(appt["client_tg_user"]) if isinstance(appt["client_tg_user"], str) else appt[
             "client_tg_user"]
         if not tg_user or not tg_user.get("id"): return
+
         start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
+
+        # Защита от отсутствия услуги (для перерывов)
+        svc_title = appt['services']['title'] if appt.get('services') else "Услуга"
+
         msg = (
             f"{'✅' if status_type == 'confirmed' else '❌'} <b>Запись {'подтверждена' if status_type == 'confirmed' else 'отменена'}</b>\n\n"
-            f"✂️ <b>Салон:</b> {appt['salons']['name']}\n🛠 <b>Услуга:</b> {appt['services']['title']}\n"
+            f"✂️ <b>Салон:</b> {appt['salons']['name']}\n🛠 <b>Услуга:</b> {svc_title}\n"
             f"📅 <b>Дата:</b> {start_dt.strftime('%d.%m.%Y')}\n⏰ <b>Время:</b> {start_dt.strftime('%H:%M')}")
         if status_type == 'confirmed' and appt['salons'].get('phone'):
             msg += f"\n\n📞 <b>Телефон:</b> {appt['salons']['phone']}"
@@ -245,7 +292,7 @@ def send_client_notification(appointment_id: str, status_type: str):
 
 # --- API Endpoints ---
 @app.get("/")
-def health_check(): return {"status": "active", "version": "3.9"}
+def health_check(): return {"status": "active", "version": "4.0"}
 
 
 @app.get("/api/user-status/{tg_id}")
@@ -270,7 +317,7 @@ async def get_analytics(salon_id: str, tg_user_id: Optional[int] = Depends(verif
         today_str = today.strftime('%Y-%m-%d')
         for app in apps:
             s = app.get('services')
-            if not s: continue
+            if not s: continue  # Skip blocks
             if app['status'] == 'completed':
                 comp += 1
                 total_rev += s['price']
@@ -291,7 +338,6 @@ async def get_analytics(salon_id: str, tg_user_id: Optional[int] = Depends(verif
         raise HTTPException(500, str(e))
 
 
-# 👇 CRM ЭНДПОИНТ 👇
 @app.get("/api/clients/{salon_id}")
 async def get_salon_clients(salon_id: str, tg_user_id: Optional[int] = Depends(verify_telegram_data)):
     if tg_user_id:
@@ -303,7 +349,8 @@ async def get_salon_clients(salon_id: str, tg_user_id: Optional[int] = Depends(v
         apps = res.data or []
         clients_dict = {}
         for app in apps:
-            phone = app['client_phone']
+            phone = app.get('client_phone')
+            if not phone: continue  # Skip blocks
             if phone not in clients_dict:
                 clients_dict[phone] = {
                     "name": app['client_name'],
@@ -317,7 +364,6 @@ async def get_salon_clients(salon_id: str, tg_user_id: Optional[int] = Depends(v
             if app['status'] == 'completed': clients_dict[phone]["total_visits"] += 1
             if app['start_time'] > clients_dict[phone]["last_visit"]: clients_dict[phone]["last_visit"] = app[
                 'start_time']
-
         return sorted(clients_dict.values(), key=lambda x: x['last_visit'], reverse=True)
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -326,16 +372,50 @@ async def get_salon_clients(salon_id: str, tg_user_id: Optional[int] = Depends(v
 @app.post("/api/book")
 async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks):
     start_dt = datetime.fromisoformat(f"{data.date}T{data.time}:00")
-    if check_overlap(data.salonId, start_dt,
-                     start_dt + timedelta(minutes=data.service.duration_minutes)): raise HTTPException(409,
-                                                                                                       "Slot taken")
+    end_dt = start_dt + timedelta(minutes=data.service.duration_minutes)
+
+    # 1. Проверяем график
+    validate_working_hours(data.salonId, start_dt, end_dt)
+
+    # 2. Проверяем занятость
+    if check_overlap(data.salonId, start_dt, end_dt): raise HTTPException(409, "Slot taken")
+
     payload = {"salon_id": data.salonId, "service_id": data.service.id, "client_name": data.client.name,
                "client_phone": data.client.phone, "client_tg_user": json.dumps(data.client.telegram_user),
                "pet_name": data.pet.name, "pet_breed": data.pet.petBreed, "start_time": start_dt.isoformat(),
-               "end_time": (start_dt + timedelta(minutes=data.service.duration_minutes)).isoformat(),
-               "status": "pending"}
+               "end_time": end_dt.isoformat(), "status": "pending"}
     res = supabase.table("appointments").insert(payload).execute()
     background_tasks.add_task(send_telegram_notification_task, data.salonId, data, start_dt)
+    return {"success": True, "id": res.data[0]['id']}
+
+
+# 👇 НОВЫЙ ЭНДПОИНТ: БЛОКИРОВКА СЛОТА
+@app.post("/api/block")
+async def block_slot(data: BlockRequest, tg_user_id: Optional[int] = Depends(verify_telegram_data)):
+    if tg_user_id:
+        check = supabase.table("salons").select("id").eq("id", data.salonId).eq("telegram_chat_id",
+                                                                                tg_user_id).execute()
+        if not check.data: raise HTTPException(403, "Forbidden")
+
+    start_dt = datetime.fromisoformat(f"{data.date}T{data.time}:00")
+    end_dt = start_dt + timedelta(minutes=data.duration_minutes)
+
+    # Можно не проверять рабочий график (мастер может блокировать что хочет),
+    # но лучше проверить, чтобы случайно не заблочить ночь.
+    # validate_working_hours(data.salonId, start_dt, end_dt)
+
+    if check_overlap(data.salonId, start_dt, end_dt): raise HTTPException(409, "Slot taken")
+
+    payload = {
+        "salon_id": data.salonId,
+        "client_name": data.reason,  # "Перерыв"
+        "start_time": start_dt.isoformat(),
+        "end_time": end_dt.isoformat(),
+        "status": "blocked",
+        # Остальные поля будут NULL
+    }
+
+    res = supabase.table("appointments").insert(payload).execute()
     return {"success": True, "id": res.data[0]['id']}
 
 

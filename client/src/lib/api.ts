@@ -76,6 +76,13 @@ export const api = {
       body: JSON.stringify(payload)
     }),
 
+  // 🟢 Блокировка слота (Перерыв)
+  blockSlot: (payload: any) =>
+    request<{ success: boolean; id: string }>('/api/block', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+
   // 🟢 Записи
   updateAppointmentStatus: (id: string, status: string) =>
     request<{ success: boolean; data: any }>(`/api/appointments/${id}/status`, {
@@ -94,7 +101,7 @@ export const api = {
       daily_stats: Array<{date: string, value: number}>
     }>(`/api/analytics/${salonId}`),
 
-  // 🟢 CRM (Новый метод)
+  // 🟢 CRM
   getClients: (salonId: string) =>
     request<any[]>(`/api/clients/${salonId}`)
 };

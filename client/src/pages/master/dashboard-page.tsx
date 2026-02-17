@@ -19,7 +19,8 @@ import {
   Loader2,
   Copy,
   MessageSquare,
-  BarChart3
+  BarChart3,
+  Coffee // 👈 Иконка для перерыва
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,7 +37,7 @@ type Appointment = {
   pet_breed: string;
   start_time: string;
   end_time: string;
-  status: 'pending' | 'confirmed' | 'completed' | 'canceled';
+  status: 'pending' | 'confirmed' | 'completed' | 'canceled' | 'blocked'; // 👈 Добавил blocked
   services: any;
 };
 
@@ -61,11 +62,15 @@ export function MasterDashboardPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
   const [isAdding, setIsAdding] = useState(false);
+  const [addMode, setAddMode] = useState<'booking' | 'block'>('booking'); // 👈 Режим добавления
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [newApp, setNewApp] = useState({
     client_name: "", client_phone: "", pet_name: "", pet_breed: "", service_id: "",
-    date: format(new Date(), "yyyy-MM-dd"), time: format(new Date(), "HH:mm")
+    date: format(new Date(), "yyyy-MM-dd"), time: format(new Date(), "HH:mm"),
+    duration_minutes: 60 // Для перерыва
   });
 
   const salonId = localStorage.getItem("salon_id");
@@ -78,6 +83,7 @@ export function MasterDashboardPage() {
   const fetchAppointments = async () => {
     if (!salonId) return;
     setLoading(true);
+    // Для blocked записей services будет null
     const { data, error } = await supabase.from('appointments')
       .select(`*, services (title, price, duration_minutes, image_url)`)
       .eq('salon_id', salonId);
@@ -103,21 +109,47 @@ export function MasterDashboardPage() {
   useEffect(() => { if (view === 'stats') fetchStats(); }, [view]);
 
   const handleManualAdd = async () => {
-    if (!newApp.client_name || !newApp.service_id || !newApp.client_phone) return toast.error("Заполните поля");
-    const selectedS = services.find(s => s.id === newApp.service_id);
-    if (!selectedS || !salonId) return;
+    if (!salonId) return;
     setIsSubmitting(true);
+
     try {
-      await api.createBooking({
-        salonId,
-        service: { id: selectedS.id, title: selectedS.title, duration_minutes: selectedS.duration_minutes },
-        date: newApp.date,
-        time: newApp.time,
-        client: { name: newApp.client_name, phone: newApp.client_phone },
-        pet: { name: newApp.pet_name, petBreed: newApp.pet_breed }
-      });
-      toast.success("Записано!"); setIsAdding(false); fetchAppointments();
-    } catch (e: any) { toast.error("Ошибка"); } finally { setIsSubmitting(false); }
+        if (addMode === 'booking') {
+             if (!newApp.client_name || !newApp.service_id || !newApp.client_phone) {
+                 toast.error("Заполните поля"); setIsSubmitting(false); return;
+             }
+             const selectedS = services.find(s => s.id === newApp.service_id);
+             if (!selectedS) return;
+
+             await api.createBooking({
+                salonId,
+                service: { id: selectedS.id, title: selectedS.title, duration_minutes: selectedS.duration_minutes },
+                date: newApp.date,
+                time: newApp.time,
+                client: { name: newApp.client_name, phone: newApp.client_phone },
+                pet: { name: newApp.pet_name, petBreed: newApp.pet_breed }
+              });
+              toast.success("Записано!");
+        } else {
+            // BLOCK MODE
+            await api.blockSlot({
+                salonId,
+                date: newApp.date,
+                time: newApp.time,
+                duration_minutes: Number(newApp.duration_minutes),
+                reason: "Перерыв"
+            });
+            toast.success("Время заблокировано ☕️");
+        }
+
+      setIsAdding(false);
+      fetchAppointments();
+    } catch (e: any) {
+        if (e.message && e.message.includes("400")) toast.error("Нерабочее время! ⚠️");
+        else if (e.message && e.message.includes("409")) toast.error("Время занято! ⚠️");
+        else toast.error("Ошибка");
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const updateStatus = async (id: string, newStatus: Appointment['status']) => {
@@ -131,17 +163,29 @@ export function MasterDashboardPage() {
     catch (e) { toast.error("Ошибка", { id: tId }); }
   };
 
-  const filteredApps = appointments.filter(app => filter === 'pending' ? app.status === 'pending' : ['confirmed', 'completed', 'canceled'].includes(app.status)).sort((a, b) => parseDate(a.start_time).getTime() - parseDate(b.start_time).getTime());
-  const calendarPendingApps = appointments.filter(app => isSameDay(parseDate(app.start_time), selectedDate) && app.status === 'pending');
+  const handleDeleteBlock = async (id: string) => {
+      if(!confirm("Удалить перерыв?")) return;
+      try {
+          await api.updateAppointmentStatus(id, 'canceled');
+          toast.success("Перерыв удален");
+          fetchAppointments();
+      } catch(e) { toast.error("Ошибка"); }
+  };
+
+  // Фильтр: показываем blocked всегда (кроме canceled)
+  const filteredApps = appointments.filter(app => {
+      if (app.status === 'canceled') return false;
+      if (filter === 'pending') return app.status === 'pending' || app.status === 'blocked';
+      return ['confirmed', 'completed'].includes(app.status);
+  }).sort((a, b) => parseDate(a.start_time).getTime() - parseDate(b.start_time).getTime());
+
+  const calendarPendingApps = appointments.filter(app => isSameDay(parseDate(app.start_time), selectedDate) && app.status !== 'canceled');
 
   const renderCalendar = () => {
     const year = currentMonth.getFullYear(), month = currentMonth.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const offset = (new Date(year, month, 1).getDay() || 7) - 1;
-
-    // 👇 ИСПРАВЛЕНИЕ: Явное указание типа React.ReactNode[]
     const days: React.ReactNode[] = [];
-
     for (let i = 0; i < offset; i++) days.push(<div key={`p-${i}`} className="h-12" />);
     for (let d = 1; d <= daysInMonth; d++) {
       const dObj = new Date(year, month, d), isSel = isSameDay(dObj, selectedDate), hasP = appointments.some(a => isSameDay(parseDate(a.start_time), dObj) && a.status === 'pending');
@@ -219,20 +263,45 @@ export function MasterDashboardPage() {
       {view === 'agenda' && (
         <div className="px-5 space-y-4">
           <div className="flex bg-white/50 p-1 rounded-xl shadow-sm"><button onClick={() => setFilter('pending')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg ${filter === 'pending' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>Ожидают</button><button onClick={() => setFilter('history')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg ${filter === 'history' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>История</button></div>
-          <div className="space-y-3">{loading ? <p className="text-center py-10">Загрузка...</p> : filteredApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} />)}</div>
+          <div className="space-y-3">{loading ? <p className="text-center py-10">Загрузка...</p> : filteredApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} onDeleteBlock={handleDeleteBlock} />)}</div>
         </div>
       )}
-      {view === 'calendar' && <div className="space-y-4">{renderCalendar()}<div className="px-5 space-y-3"><h2 className="text-[13px] font-bold text-[#8E8E93] uppercase px-1">{format(selectedDate, 'd MMMM', { locale: ru })}</h2>{calendarPendingApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} />)}</div></div>}
+      {view === 'calendar' && <div className="space-y-4">{renderCalendar()}<div className="px-5 space-y-3"><h2 className="text-[13px] font-bold text-[#8E8E93] uppercase px-1">{format(selectedDate, 'd MMMM', { locale: ru })}</h2>{calendarPendingApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} onDeleteBlock={handleDeleteBlock} />)}</div></div>}
       {view === 'stats' && renderStats()}
+
+      {/* МОДАЛЬНОЕ ОКНО С ТАБАМИ */}
       {isAdding && (
         <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-end justify-center">
           <div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[24px] h-[90vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom">
-            <div className="p-4 border-b flex justify-between items-center bg-white"><button onClick={() => setIsAdding(false)} className="text-[#007AFF]">Отмена</button><span className="font-bold">Новая запись</span><button onClick={handleManualAdd} className="font-bold text-[#007AFF]">{isSubmitting ? "..." : "Готово"}</button></div>
-            <div className="p-5 space-y-4 overflow-y-auto">
-              <div className="bg-white p-4 rounded-xl space-y-3"><input placeholder="Имя" className="w-full text-lg outline-none" value={newApp.client_name} onChange={e => setNewApp({...newApp, client_name: e.target.value})} /><PhoneInput value={newApp.client_phone} onChange={val => setNewApp({...newApp, client_phone: val})} /></div>
-              <div className="grid grid-cols-2 gap-3"><div className="bg-white p-3 rounded-xl"><input placeholder="Кличка" className="w-full outline-none" value={newApp.pet_name} onChange={e => setNewApp({...newApp, pet_name: e.target.value})} /></div><div className="bg-white p-3 rounded-xl"><input placeholder="Порода" className="w-full outline-none" value={newApp.pet_breed} onChange={e => setNewApp({...newApp, pet_breed: e.target.value})} /></div></div>
-              <div className="bg-white p-3 rounded-xl"><select className="w-full outline-none" value={newApp.service_id} onChange={e => setNewApp({...newApp, service_id: e.target.value})}><option value="">Выбрать услугу</option>{services.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}</select></div>
-              <div className="grid grid-cols-2 gap-3"><input type="date" className="p-3 rounded-xl outline-none" value={newApp.date} onChange={e => setNewApp({...newApp, date: e.target.value})} /><input type="time" className="p-3 rounded-xl outline-none" value={newApp.time} onChange={e => setNewApp({...newApp, time: e.target.value})} /></div>
+            <div className="p-4 border-b flex justify-between items-center bg-white"><button onClick={() => setIsAdding(false)} className="text-[#007AFF]">Отмена</button><span className="font-bold">{addMode === 'booking' ? 'Новая запись' : 'Перерыв'}</span><button onClick={handleManualAdd} className="font-bold text-[#007AFF]">{isSubmitting ? "..." : "Готово"}</button></div>
+
+            {/* ТАБЫ */}
+            <div className="px-5 pt-4 pb-2">
+                <div className="flex bg-[#E3E3E8] p-1 rounded-xl">
+                    <button onClick={() => setAddMode('booking')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg transition-all ${addMode === 'booking' ? 'bg-white shadow-sm text-black' : 'text-[#8E8E93]'}`}>Клиент</button>
+                    <button onClick={() => setAddMode('block')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg transition-all ${addMode === 'block' ? 'bg-white shadow-sm text-black' : 'text-[#8E8E93]'}`}>Перерыв</button>
+                </div>
+            </div>
+
+            <div className="px-5 mt-2 space-y-4 overflow-y-auto">
+              {addMode === 'booking' ? (
+                  <>
+                    <div className="bg-white p-4 rounded-xl space-y-3"><input placeholder="Имя" className="w-full text-lg outline-none" value={newApp.client_name} onChange={e => setNewApp({...newApp, client_name: e.target.value})} /><PhoneInput value={newApp.client_phone} onChange={val => setNewApp({...newApp, client_phone: val})} /></div>
+                    <div className="grid grid-cols-2 gap-3"><div className="bg-white p-3 rounded-xl"><input placeholder="Кличка" className="w-full outline-none" value={newApp.pet_name} onChange={e => setNewApp({...newApp, pet_name: e.target.value})} /></div><div className="bg-white p-3 rounded-xl"><input placeholder="Порода" className="w-full outline-none" value={newApp.pet_breed} onChange={e => setNewApp({...newApp, pet_breed: e.target.value})} /></div></div>
+                    <div className="bg-white p-3 rounded-xl"><select className="w-full outline-none" value={newApp.service_id} onChange={e => setNewApp({...newApp, service_id: e.target.value})}><option value="">Выбрать услугу</option>{services.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}</select></div>
+                  </>
+              ) : (
+                  <div className="bg-white p-4 rounded-xl space-y-3">
+                      <label className="text-xs font-bold text-gray-400 uppercase">Длительность</label>
+                      <div className="flex gap-2">
+                          {[30, 60, 90, 120].map(min => (
+                              <button key={min} onClick={() => setNewApp({...newApp, duration_minutes: min})} className={`flex-1 py-2 rounded-lg text-sm font-bold border ${newApp.duration_minutes === min ? 'bg-[#007AFF] text-white border-[#007AFF]' : 'border-slate-100 text-black'}`}>{min} мин</button>
+                          ))}
+                      </div>
+                  </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3"><input type="date" className="p-3 rounded-xl outline-none text-center bg-white" value={newApp.date} onChange={e => setNewApp({...newApp, date: e.target.value})} /><input type="time" className="p-3 rounded-xl outline-none text-center bg-white" value={newApp.time} onChange={e => setNewApp({...newApp, time: e.target.value})} /></div>
             </div>
           </div>
         </div>
@@ -241,8 +310,26 @@ export function MasterDashboardPage() {
   );
 }
 
-function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUpdate: (id: string, s: Appointment['status']) => void }) {
+function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointment, onStatusUpdate: (id: string, s: Appointment['status']) => void, onDeleteBlock: (id: string) => void }) {
   const [ex, setEx] = useState(false);
+
+  // 🛑 Рендер для ПЕРЕРЫВА
+  if (app.status === 'blocked') {
+      const bTime = parseDate(app.start_time);
+      return (
+        <div className="bg-[#E3E3E8] rounded-2xl border border-slate-200 p-4 flex items-center justify-between opacity-80">
+            <div className="flex items-center gap-4">
+                <div className="font-bold text-lg w-12 text-center text-[#8E8E93]">{format(bTime, 'HH:mm')}</div>
+                <div className="w-[1px] h-8 bg-slate-300" />
+                <div className="flex items-center gap-2 text-[#8E8E93] font-bold">
+                    <Coffee size={18} /> Перерыв
+                </div>
+            </div>
+            <button onClick={() => onDeleteBlock(app.id)} className="text-[#FF3B30] text-xs font-bold">Удалить</button>
+        </div>
+      );
+  }
+
   const sInfo = Array.isArray(app.services) ? app.services[0] : app.services;
   const sTime = parseDate(app.start_time);
   const cfg: any = { pending: { bg: '#FFF4D6', text: '#855E00', lbl: 'НОВАЯ' }, confirmed: { bg: '#E3F2FF', text: '#007AFF', lbl: 'ПРИНЯТА' }, completed: { bg: '#E8F5E9', text: '#2E7D32', lbl: 'ГОТОВО' }, canceled: { bg: '#FFEBEE', text: '#C62828', lbl: 'ОТМЕНА' } }[app.status];
@@ -251,7 +338,7 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
     <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
       <div className="p-4 flex items-center justify-between" onClick={() => setEx(!ex)}>
         <div className="flex items-center gap-4"><div className="text-center shrink-0 w-12"><div className="font-bold text-lg">{format(sTime, 'HH:mm')}</div><div className="text-[10px] uppercase text-slate-400">{format(sTime, 'd MMM', { locale: ru })}</div></div><div className="w-[1px] h-8 bg-slate-100" /><div><div className="font-bold">{app.pet_name}</div><div className="text-xs text-slate-400">{sInfo?.title}</div></div></div>
-        <div className="flex items-center gap-2"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: cfg.bg, color: cfg.text }}>{cfg.lbl}</span><ChevronDown size={16} className={ex ? "rotate-180" : ""} /></div>
+        <div className="flex items-center gap-2 ml-2 shrink-0"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: cfg.bg, color: cfg.text }}>{cfg.lbl}</span><ChevronDown size={16} className={ex ? "rotate-180" : ""} /></div>
       </div>
       {ex && (
         <div className="px-4 pb-4 space-y-4 animate-in slide-in-from-top-1">
