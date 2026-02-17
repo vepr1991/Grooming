@@ -1,12 +1,6 @@
 fastapi
 uvicorn
-pydantic
 supabase
-python-multipart
 python-dotenv
-httpx
-requests
-pytz
-Pillow
-apscheduler
-pydantic-settings
+pyTelegramBotAPI
+apscheduler==3.10.4

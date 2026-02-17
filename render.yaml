@@ -1,0 +1,18 @@
+services:
+  # Наш Python Backend
+  - type: web
+    name: grooming-backend
+    env: docker
+    rootDir: backend  # <--- Самое важное: указываем папку, где лежит код и Dockerfile
+    plan: free        # Используем бесплатный тариф
+
+    # Переменные, которые нужно будет ввести в Dashboard Render'а
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: PORT
+        value: 10000
