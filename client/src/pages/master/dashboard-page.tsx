@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Scissors,
+  Loader2,
   Copy,
   MessageSquare,
   BarChart3
