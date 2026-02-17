@@ -18,7 +18,6 @@ import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { api } from "@/lib/api";
 
-// --- Types ---
 type Step = 'showcase' | 'datetime' | 'details' | 'success';
 
 type Salon = {
@@ -29,7 +28,7 @@ type Salon = {
   photo_url: string;
   description: string;
   schedule: any[];
-  gallery: string[]; // 👈 Добавили поле галереи
+  gallery: string[];
   slot_step: number;
 };
 
@@ -62,7 +61,6 @@ export function ClientBookingPage() {
     agreed: false
   });
 
-  // Lightbox State (для просмотра фото)
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   // 1. Загрузка данных салона
@@ -77,21 +75,11 @@ export function ClientBookingPage() {
         ]);
 
         if (sRes.data) {
-           // Парсим галерею (она может быть JSON-строкой или массивом)
            let parsedGallery = [];
-           try {
-             parsedGallery = typeof sRes.data.gallery === 'string'
-               ? JSON.parse(sRes.data.gallery)
-               : sRes.data.gallery || [];
-           } catch(e) { parsedGallery = []; }
+           try { parsedGallery = typeof sRes.data.gallery === 'string' ? JSON.parse(sRes.data.gallery) : sRes.data.gallery || []; } catch(e) { parsedGallery = []; }
 
-           // Парсим расписание
            let parsedSchedule = [];
-           try {
-             parsedSchedule = typeof sRes.data.schedule === 'string'
-                ? JSON.parse(sRes.data.schedule)
-                : sRes.data.schedule || [];
-           } catch(e) { parsedSchedule = []; }
+           try { parsedSchedule = typeof sRes.data.schedule === 'string' ? JSON.parse(sRes.data.schedule) : sRes.data.schedule || []; } catch(e) { parsedSchedule = []; }
 
            setSalon({
                ...sRes.data,
@@ -132,7 +120,7 @@ export function ClientBookingPage() {
         .from('appointments')
         .select('start_time, end_time')
         .eq('salon_id', salonId)
-        .neq('status', 'canceled')
+        .neq('status', 'canceled') // Это включает 'blocked'
         .lte('start_time', end.toISOString())
         .gte('end_time', start.toISOString());
 
@@ -141,6 +129,14 @@ export function ClientBookingPage() {
     }
     fetchBusySlots();
   }, [selectedDate, salonId]);
+
+  // 👇 ФУНКЦИЯ ПАРСИНГА ДАТЫ БЕЗ УЧЕТА ЧАСОВЫХ ПОЯСОВ (FIX)
+  const parseDbDate = (isoStr: string) => {
+      // Обрезаем Z и смещение, чтобы new Date считал это локальным временем
+      // Пример: "2026-02-18T12:20:00+00:00" -> "2026-02-18T12:20:00"
+      const clean = isoStr.split('+')[0].split('Z')[0];
+      return new Date(clean);
+  };
 
   const getSlots = () => {
     if (!salon || !salon.schedule) return [];
@@ -162,10 +158,12 @@ export function ClientBookingPage() {
       const slotEnd = addMinutes(slotStart, duration);
 
       const isBusy = existingAppointments.some(app => {
-        const cleanStart = app.start_time.replace(' ', 'T').replace(/(Z|\+.*)$/, '');
-        const cleanEnd = app.end_time.replace(' ', 'T').replace(/(Z|\+.*)$/, '');
-        const appStart = new Date(cleanStart);
-        const appEnd = new Date(cleanEnd);
+        // Используем наш безопасный парсер
+        const appStart = parseDbDate(app.start_time);
+        const appEnd = parseDbDate(app.end_time);
+
+        // Проверка пересечения интервалов:
+        // (StartA < EndB) and (EndA > StartB)
         return slotStart < appEnd && slotEnd > appStart;
       });
 
@@ -249,7 +247,7 @@ export function ClientBookingPage() {
                  {salon?.description && <p className="text-[14px] text-[#3A3A3C] leading-relaxed bg-white p-4 rounded-[20px] shadow-sm">{salon.description}</p>}
             </div>
 
-            {/* 👇 ГАЛЕРЕЯ (ПОРТФОЛИО) */}
+            {/* ГАЛЕРЕЯ (ПОРТФОЛИО) */}
             {salon?.gallery && salon.gallery.length > 0 && (
                <div className="p-5 pb-0 space-y-3">
                    <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 flex items-center gap-2">
