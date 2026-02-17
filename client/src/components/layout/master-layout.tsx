@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Scissors, User, Users } from "lucide-react"; // 👈 Добавил Users
+import { LayoutDashboard, Scissors, User, Users } from "lucide-react";
 
 export function MasterLayout() {
   const navigate = useNavigate();
@@ -10,7 +10,8 @@ export function MasterLayout() {
   return (
     <div className="flex flex-col h-screen bg-[#F2F2F7]">
       {/* Основной контент */}
-      <div className="flex-1 overflow-hidden relative">
+      {/* 👇 ИСПРАВЛЕНИЕ: overflow-y-auto вместо overflow-hidden */}
+      <div className="flex-1 overflow-y-auto relative no-scrollbar">
         <Outlet />
       </div>
 
@@ -34,7 +35,6 @@ export function MasterLayout() {
             <span className="text-[10px] font-bold">Услуги</span>
           </button>
 
-          {/* 👇 НОВАЯ КНОПКА КЛИЕНТЫ */}
           <button
             onClick={() => navigate('/master/clients')}
             className={`flex flex-col items-center gap-1 w-16 active:scale-95 transition-all ${isActive('/clients') ? 'text-[#007AFF]' : 'text-[#8E8E93]'}`}
