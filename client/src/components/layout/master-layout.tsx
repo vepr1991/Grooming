@@ -1,36 +1,56 @@
-import { Outlet, Link, useLocation } from "react-router-dom";
-import { CalendarDays, Scissors, UserCircle } from "lucide-react";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { LayoutDashboard, Scissors, User, Users } from "lucide-react"; // 👈 Добавил Users
 
 export function MasterLayout() {
+  const navigate = useNavigate();
   const location = useLocation();
 
-  // Функция для подсветки активной кнопки
-  const isActive = (path: string) => location.pathname === path ? "text-primary" : "text-muted-foreground";
+  const isActive = (path: string) => location.pathname.includes(path);
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* Основной контент (скроллится) */}
-      <main className="flex-1 overflow-y-auto pb-16">
+    <div className="flex flex-col h-screen bg-[#F2F2F7]">
+      {/* Основной контент */}
+      <div className="flex-1 overflow-hidden relative">
         <Outlet />
-      </main>
+      </div>
 
-      {/* Нижнее меню навигации (фиксировано) */}
-      <nav className="fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex justify-around items-center h-16">
-          <Link to="/master" className={`flex flex-col items-center gap-1 ${isActive("/master")}`}>
-            <CalendarDays className="h-5 w-5" />
-            <span className="text-xs">Записи</span>
-          </Link>
+      {/* Нижняя навигация */}
+      <nav className="bg-white border-t border-slate-200 pb-safe pt-3 px-6 h-[88px] shrink-0 z-50">
+        <div className="flex justify-between items-start max-w-md mx-auto">
 
-          <Link to="/master/services" className={`flex flex-col items-center gap-1 ${isActive("/master/services")}`}>
-            <Scissors className="h-5 w-5" />
-            <span className="text-xs">Услуги</span>
-          </Link>
+          <button
+            onClick={() => navigate('/master/dashboard')}
+            className={`flex flex-col items-center gap-1 w-16 active:scale-95 transition-all ${isActive('/dashboard') ? 'text-[#007AFF]' : 'text-[#8E8E93]'}`}
+          >
+            <LayoutDashboard size={26} strokeWidth={isActive('/dashboard') ? 2.5 : 2} />
+            <span className="text-[10px] font-bold">Главная</span>
+          </button>
 
-          <Link to="/master/profile" className={`flex flex-col items-center gap-1 ${isActive("/master/profile")}`}>
-            <UserCircle className="h-5 w-5" />
-            <span className="text-xs">Профиль</span>
-          </Link>
+          <button
+            onClick={() => navigate('/master/services')}
+            className={`flex flex-col items-center gap-1 w-16 active:scale-95 transition-all ${isActive('/services') ? 'text-[#007AFF]' : 'text-[#8E8E93]'}`}
+          >
+            <Scissors size={26} strokeWidth={isActive('/services') ? 2.5 : 2} />
+            <span className="text-[10px] font-bold">Услуги</span>
+          </button>
+
+          {/* 👇 НОВАЯ КНОПКА КЛИЕНТЫ */}
+          <button
+            onClick={() => navigate('/master/clients')}
+            className={`flex flex-col items-center gap-1 w-16 active:scale-95 transition-all ${isActive('/clients') ? 'text-[#007AFF]' : 'text-[#8E8E93]'}`}
+          >
+            <Users size={26} strokeWidth={isActive('/clients') ? 2.5 : 2} />
+            <span className="text-[10px] font-bold">Клиенты</span>
+          </button>
+
+          <button
+            onClick={() => navigate('/master/profile')}
+            className={`flex flex-col items-center gap-1 w-16 active:scale-95 transition-all ${isActive('/profile') ? 'text-[#007AFF]' : 'text-[#8E8E93]'}`}
+          >
+            <User size={26} strokeWidth={isActive('/profile') ? 2.5 : 2} />
+            <span className="text-[10px] font-bold">Профиль</span>
+          </button>
+
         </div>
       </nav>
     </div>
