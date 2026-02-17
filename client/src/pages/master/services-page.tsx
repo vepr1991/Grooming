@@ -3,9 +3,7 @@ import { Plus, Trash2, ChevronDown, Scissors, Image as ImageIcon, Camera, Loader
 import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
-
-// 👇 URL ТВОЕГО БЕКЕНДА
-const BACKEND_URL = "https://grooming-tma.onrender.com";
+import { api } from "@/lib/api"; // 👈 НОВЫЙ ИМПОРТ
 
 type Service = {
   id: string;
@@ -39,11 +37,12 @@ export function MasterServicesPage() {
   const fetchServices = async () => {
     if (!salonId) return;
     setLoading(true);
+    // Чтение через Supabase (безопасно и быстро, RLS позволяет)
     const { data, error } = await supabase
       .from("services")
       .select("*")
       .eq("salon_id", salonId)
-      .eq("is_active", true) // 👈 ВАЖНО: Показываем только активные (не удаленные)
+      .eq("is_active", true) // Показываем только активные
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -97,32 +96,21 @@ export function MasterServicesPage() {
         salon_id: salonId, // Нужно только для создания
       };
 
-      let response;
-
+      // 👇 ИСПОЛЬЗУЕМ НОВЫЙ API КЛИЕНТ
       if (editingId) {
-        // РЕЖИМ РЕДАКТИРОВАНИЯ (PATCH)
-        response = await fetch(`${BACKEND_URL}/api/services/${editingId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        // РЕЖИМ РЕДАКТИРОВАНИЯ
+        await api.updateService(editingId, payload);
       } else {
-        // РЕЖИМ СОЗДАНИЯ (POST)
-        response = await fetch(`${BACKEND_URL}/api/services`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        // РЕЖИМ СОЗДАНИЯ
+        await api.createService(payload);
       }
-
-      if (!response.ok) throw new Error("Ошибка сервера");
 
       toast.success(editingId ? "Услуга обновлена" : "Услуга добавлена");
       setIsModalOpen(false);
       fetchServices();
 
-    } catch (e) {
-      toast.error("Ошибка при сохранении");
+    } catch (e: any) {
+      toast.error(e.message || "Ошибка при сохранении");
       console.error(e);
     } finally {
       setSubmitting(false);
@@ -134,21 +122,18 @@ export function MasterServicesPage() {
     if (!confirm("Удалить эту услугу из прайса?")) return;
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/services/${id}`, {
-        method: 'DELETE'
-      });
-
-      if (!response.ok) throw new Error("Ошибка удаления");
+      // 👇 ИСПОЛЬЗУЕМ НОВЫЙ API КЛИЕНТ
+      await api.deleteService(id);
 
       toast.success("Услуга удалена");
       setServices(prev => prev.filter(s => s.id !== id));
-    } catch (e) {
-      toast.error("Не удалось удалить услугу");
+    } catch (e: any) {
+      toast.error(e.message || "Не удалось удалить услугу");
     }
   };
 
   return (
-    <div className="space-y-6 pt-10 pb-28 bg-[#F2F2F7] min-h-screen">
+    <div className="space-y-6 pt-10 pb-28 bg-[#F2F2F7] min-h-screen font-sans">
       <div className="px-5 flex justify-between items-end">
         <div>
           <h1 className="text-[34px] font-extrabold tracking-tight text-black mb-1">Услуги</h1>
@@ -201,17 +186,7 @@ export function MasterServicesPage() {
                   ) : (
                     <ImageIcon size={48} className="text-[#C7C7CC]" />
                   )}
-                  {/* <div className="absolute bottom-2 right-2 bg-[#007AFF] text-white p-2 rounded-full shadow-lg">
-                    <Camera size={16} />
-                  </div> */}
                 </div>
-                {/* Временно скрыл, пока нет загрузки файлов */}
-                {/* <input
-                  placeholder="URL фотографии"
-                  className="w-full text-center text-[13px] text-[#007AFF] bg-transparent outline-none"
-                  value={formData.image_url || ''}
-                  onChange={e => setFormData({...formData, image_url: e.target.value})}
-                /> */}
               </div>
 
               <div className="space-y-1.5">

@@ -4,9 +4,7 @@ import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
-
-// 👇 URL ТВОЕГО БЕКЕНДА
-const BACKEND_URL = "https://grooming-tma.onrender.com";
+import { api } from "@/lib/api"; // 👈 НОВЫЙ ИМПОРТ
 
 // 👇 ТВОИ ДАННЫЕ (Убедись, что они верные)
 const BOT_USERNAME = "pet_groom_bot";
@@ -36,7 +34,6 @@ export function MasterProfilePage() {
   useEffect(() => {
     if (salonId) {
       async function loadSalon() {
-        // Чтение оставляем через Supabase (это безопасно и быстро)
         const { data } = await supabase
           .from('salons')
           .select('*')
@@ -44,7 +41,6 @@ export function MasterProfilePage() {
           .single();
 
         if (data) {
-          // Парсим расписание, если оно пришло строкой (бывает в старых записях)
           let parsedSchedule = [];
           if (typeof data.schedule === 'string') {
               try { parsedSchedule = JSON.parse(data.schedule); } catch(e) { parsedSchedule = []; }
@@ -72,46 +68,36 @@ export function MasterProfilePage() {
       toast.error("Название салона обязательно");
       return;
     }
+    if (!salonId) return;
 
     setLoading(true);
-    // const toastId = toast.loading("Сохранение...");
 
     try {
-      // 👇 ИСПРАВЛЕНИЕ: Используем Python API для сохранения
       const payload = {
         name: formData.name,
         address: formData.address,
         phone: formData.phone,
         description: formData.description,
-        // photo_url: formData.photo_url, // Пока закомментируем, если на беке нет поддержки, или раскомментируй если добавил поле в Pydantic
-        schedule: JSON.stringify(formData.schedule), // Важно: API ждет строку JSON для расписания
-        // slot_step: formData.slot_step // Если добавил в Pydantic на беке - раскомментируй
+        schedule: JSON.stringify(formData.schedule),
+        slot_step: formData.slot_step // Добавил slot_step в обновление
       };
 
-      const response = await fetch(`${BACKEND_URL}/api/salons/${salonId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) throw new Error("Ошибка сохранения на сервере");
+      // 👇 ИСПОЛЬЗУЕМ НОВЫЙ API КЛИЕНТ
+      await api.updateSalon(salonId, payload);
 
       toast.success("Профиль обновлен! ✨");
       setIsEditing(false);
 
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      toast.error("Ошибка сохранения");
+      toast.error(e.message || "Ошибка сохранения");
     } finally {
       setLoading(false);
-      // toast.dismiss(toastId);
     }
   };
 
   const toggleDay = (dayName: string) => {
-    // if (!isEditing) return; // Разрешаем кликать всегда или только при редактировании? У тебя было только при редактировании.
     if (!isEditing) return;
-
     setFormData(prev => ({
       ...prev,
       schedule: prev.schedule.map(d =>
@@ -132,10 +118,7 @@ export function MasterProfilePage() {
 
   const handleCopyLink = () => {
     if (!salonId) return;
-
-    // ✅ ГЕНЕРИРУЕМ ПРАВИЛЬНУЮ ССЫЛКУ T.ME
     const url = `https://t.me/${BOT_USERNAME}/${APP_NAME}?startapp=salon_${salonId}`;
-
     navigator.clipboard.writeText(url);
     toast.success("Ссылка для Telegram скопирована!");
   };
@@ -149,7 +132,6 @@ export function MasterProfilePage() {
     <div className="space-y-6 pt-10 pb-32 bg-[#F2F2F7] min-h-screen font-sans">
       <div className="px-5 flex justify-between items-end">
          <h1 className="text-[34px] font-extrabold tracking-tight text-black">Профиль</h1>
-         {/* Кнопка "Сохранить" в заголовке, если редактируем */}
          {isEditing && (
              <button onClick={handleSave} disabled={loading} className="text-[#007AFF] font-bold text-[17px]">
                  {loading ? <Loader2 className="animate-spin" /> : "Готово"}
@@ -157,7 +139,6 @@ export function MasterProfilePage() {
          )}
       </div>
 
-      {/* Аватарка */}
       <div className="flex flex-col items-center mb-4 px-5">
         <div className="relative">
           <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-white shadow-xl bg-white flex items-center justify-center">
@@ -173,7 +154,6 @@ export function MasterProfilePage() {
             </button>
           )}
         </div>
-
         {isEditing && (
           <input
             placeholder="URL логотипа"
@@ -185,8 +165,6 @@ export function MasterProfilePage() {
       </div>
 
       <div className="px-5 space-y-7">
-
-        {/* Контактная информация */}
         <div className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 flex items-center gap-1.5">
@@ -233,7 +211,6 @@ export function MasterProfilePage() {
           </div>
         </div>
 
-        {/* График работы */}
         <section className="space-y-2">
           <h2 className="text-[12px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">График работы</h2>
           <div className="bg-white rounded-[16px] overflow-hidden shadow-sm border border-slate-100 divide-y divide-[#F2F2F7]">
@@ -266,19 +243,17 @@ export function MasterProfilePage() {
                       <span className="text-[13px] font-medium text-[#C7C7CC]">Выходной</span>
                     )}
                   </div>
-
-                  {/* Переключатель (Toggle) */}
                   <button
                     disabled={!isEditing}
                     onClick={() => toggleDay(day.day)}
                     className={`
-                        w-[50px] h-[30px] rounded-full transition-all duration-300 relative shrink-0 
-                        ${day.isWorking ? 'bg-[#34C759]' : 'bg-[#E5E5EA]'} 
+                        w-[50px] h-[30px] rounded-full transition-all duration-300 relative shrink-0
+                        ${day.isWorking ? 'bg-[#34C759]' : 'bg-[#E5E5EA]'}
                         ${!isEditing && 'opacity-80'}
                     `}
                   >
                     <div className={`
-                        absolute top-[2px] w-[26px] h-[26px] bg-white rounded-full shadow-sm transition-all duration-300 
+                        absolute top-[2px] w-[26px] h-[26px] bg-white rounded-full shadow-sm transition-all duration-300
                         ${day.isWorking ? 'translate-x-[22px]' : 'translate-x-[2px]'}
                     `}></div>
                   </button>
@@ -288,7 +263,6 @@ export function MasterProfilePage() {
           </div>
         </section>
 
-        {/* Параметры записи */}
         <section className="space-y-2">
           <h2 className="text-[12px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Параметры записи</h2>
           <div className="bg-white rounded-[16px] p-4 shadow-sm border border-slate-100">
@@ -319,7 +293,6 @@ export function MasterProfilePage() {
           </div>
         </section>
 
-        {/* Описание */}
         <div className="space-y-1.5">
           <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 tracking-wide">Описание для клиентов</label>
           <div className={fieldContainerClass(isEditing)}>
@@ -334,7 +307,6 @@ export function MasterProfilePage() {
           </div>
         </div>
 
-        {/* Кнопки действий */}
         <div className="pt-4 space-y-3">
           {!isEditing && (
              <>

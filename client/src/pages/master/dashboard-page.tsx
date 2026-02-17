@@ -21,9 +21,7 @@ import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
-
-// 👇 URL ТВОЕГО БЕКЕНДА
-const BACKEND_URL = "https://grooming-tma.onrender.com";
+import { api } from "@/lib/api"; // 👈 ИМПОРТ
 
 type Appointment = {
   id: string;
@@ -67,6 +65,7 @@ export function MasterDashboardPage() {
   const fetchAppointments = async () => {
     if (!salonId) return;
     setLoading(true);
+    // Чтение через Supabase (безопасно и быстро)
     const { data, error } = await supabase.from('appointments')
       .select(`*, services (title, price, duration_minutes)`)
       .eq('salon_id', salonId);
@@ -79,7 +78,8 @@ export function MasterDashboardPage() {
     if (!salonId) return;
     const { data } = await supabase.from('services')
       .select('id, title, price, duration_minutes')
-      .eq('salon_id', salonId);
+      .eq('salon_id', salonId)
+      .eq('is_active', true); // Фильтр активных услуг
     if (data) setServices(data);
   };
 
@@ -117,32 +117,22 @@ export function MasterDashboardPage() {
         }
       };
 
-      const response = await fetch(`${BACKEND_URL}/api/book`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      // 👇 ИСПОЛЬЗУЕМ НОВЫЙ API КЛИЕНТ
+      await api.createBooking(payload);
 
-      if (response.status === 409) {
-        toast.error("Это время уже занято! ⚠️");
-        setIsSubmitting(false);
-        return;
-      }
+      toast.success("Клиент успешно записан!");
+      setIsAdding(false);
+      setNewApp(prev => ({ ...prev, client_name: "", client_phone: "", pet_name: "", pet_breed: "" }));
+      fetchAppointments();
 
-      const result = await response.json();
-
-      if (result.success) {
-        toast.success("Клиент успешно записан!");
-        setIsAdding(false);
-        setNewApp(prev => ({ ...prev, client_name: "", client_phone: "", pet_name: "", pet_breed: "" }));
-        fetchAppointments();
-      } else {
-        toast.error("Ошибка сервера: " + result.detail);
-      }
-
-    } catch (e) {
-      toast.error("Не удалось создать запись");
+    } catch (e: any) {
       console.error(e);
+      // Если ошибка 409 - занято
+      if (e.message && e.message.includes("409")) {
+          toast.error("Это время уже занято! ⚠️");
+      } else {
+          toast.error(e.message || "Не удалось создать запись");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -151,13 +141,8 @@ export function MasterDashboardPage() {
   const updateStatus = async (id: string, newStatus: Appointment['status']) => {
     const toastId = toast.loading("Обновление...");
     try {
-        const response = await fetch(`${BACKEND_URL}/api/appointments/${id}/status`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: newStatus })
-        });
-
-        if (!response.ok) throw new Error("Ошибка обновления");
+        // 👇 ИСПОЛЬЗУЕМ НОВЫЙ API КЛИЕНТ
+        await api.updateAppointmentStatus(id, newStatus);
 
         toast.success("Статус обновлен", { id: toastId });
         fetchAppointments();
