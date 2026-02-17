@@ -1,6 +1,5 @@
 // client/src/lib/api.ts
 
-// 👇 URL ТВОЕГО БЕКЕНДА
 const BASE_URL = "https://grooming-tma.onrender.com";
 
 export type ApiResponse<T = any> = {
@@ -10,7 +9,6 @@ export type ApiResponse<T = any> = {
   detail?: string;
 };
 
-// Функция для получения "паспорта" Телеграм
 function getTelegramInitData() {
   // @ts-ignore
   return window.Telegram?.WebApp?.initData || "";
@@ -19,10 +17,9 @@ function getTelegramInitData() {
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${BASE_URL}${endpoint}`;
 
-  // Добавляем заголовок авторизации автоматически
   const headers = {
     'Content-Type': 'application/json',
-    'X-Telegram-Init-Data': getTelegramInitData(), // 👈 ОТПРАВЛЯЕМ "ПАСПОРТ"
+    'X-Telegram-Init-Data': getTelegramInitData(),
     ...options.headers,
   };
 
@@ -38,8 +35,6 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   return data;
 }
-
-// === API МЕТОДЫ ===
 
 export const api = {
   // 🟢 Регистрация
@@ -70,7 +65,7 @@ export const api = {
     }),
 
   deleteService: (id: string) =>
-    request<{ success: boolean }>((`/api/services/${id}`), {
+    request<{ success: boolean }>(`/api/services/${id}`, {
       method: 'DELETE'
     }),
 
@@ -87,9 +82,8 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ status })
     }),
-};
 
-// 🟢 Аналитика
+  // 🟢 Аналитика
   getAnalytics: (salonId: string) =>
     request<{
       total_revenue: number;
@@ -98,4 +92,5 @@ export const api = {
       canceled_count: number;
       today_revenue: number;
       daily_stats: Array<{date: string, value: number}>
-    }>(`/api/analytics/${salonId}`),
+    }>(`/api/analytics/${salonId}`)
+}; // 👈 Убедись, что здесь только одна закрывающая скобка и точка с запятой
