@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Trash2, ChevronDown, Scissors, Image as ImageIcon, Camera, Loader2 } from "lucide-react";
+import { Plus, Trash2, ChevronDown, Scissors, Image as ImageIcon, Camera, Loader2, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
@@ -14,15 +14,19 @@ type Service = {
   duration_minutes: number;
   description?: string;
   image_url?: string;
+  is_active?: boolean;
 };
 
 export function MasterServicesPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isAdding, setIsAdding] = useState(false);
-  const [submitting, setSubmitting] = useState(false); // Лоадер при отправке
 
-  const [newService, setNewService] = useState<Partial<Service>>({
+  // Состояние модалки
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null); // ID услуги, которую редактируем
+
+  const [formData, setFormData] = useState<Partial<Service>>({
     title: "",
     price: undefined,
     duration_minutes: 60,
@@ -39,6 +43,7 @@ export function MasterServicesPage() {
       .from("services")
       .select("*")
       .eq("salon_id", salonId)
+      .eq("is_active", true) // 👈 ВАЖНО: Показываем только активные (не удаленные)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -53,44 +58,73 @@ export function MasterServicesPage() {
     fetchServices();
   }, [salonId]);
 
-  const handleAdd = async () => {
-    if (!newService.title || !newService.price) {
+  // Открыть модалку для СОЗДАНИЯ
+  const openCreateModal = () => {
+    setEditingId(null);
+    setFormData({ title: "", price: undefined, duration_minutes: 60, description: "", image_url: "" });
+    setIsModalOpen(true);
+  };
+
+  // Открыть модалку для РЕДАКТИРОВАНИЯ
+  const openEditModal = (service: Service, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(service.id);
+    setFormData({
+      title: service.title,
+      price: service.price,
+      duration_minutes: service.duration_minutes,
+      description: service.description || "",
+      image_url: service.image_url || ""
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!formData.title || !formData.price) {
       toast.error("Название и цена обязательны");
       return;
     }
 
     setSubmitting(true);
-    // const toastId = toast.loading("Создаем услугу...");
 
     try {
       const payload = {
-        salon_id: salonId,
-        title: newService.title,
-        price: Number(newService.price),
-        duration_minutes: Number(newService.duration_minutes),
-        description: newService.description,
-        image_url: newService.image_url // Если бекенд поддерживает, добавь это поле в Pydantic модель
+        title: formData.title,
+        price: Number(formData.price),
+        duration_minutes: Number(formData.duration_minutes),
+        description: formData.description,
+        image_url: formData.image_url,
+        salon_id: salonId, // Нужно только для создания
       };
 
-      // 👇 ИСПРАВЛЕНИЕ: Используем Python API
-      const response = await fetch(`${BACKEND_URL}/api/services`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      let response;
 
-      if (!response.ok) throw new Error("Ошибка создания");
+      if (editingId) {
+        // РЕЖИМ РЕДАКТИРОВАНИЯ (PATCH)
+        response = await fetch(`${BACKEND_URL}/api/services/${editingId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        // РЕЖИМ СОЗДАНИЯ (POST)
+        response = await fetch(`${BACKEND_URL}/api/services`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
 
-      toast.success("Услуга добавлена");
-      setIsAdding(false);
-      setNewService({ title: "", price: undefined, duration_minutes: 60, description: "" });
+      if (!response.ok) throw new Error("Ошибка сервера");
+
+      toast.success(editingId ? "Услуга обновлена" : "Услуга добавлена");
+      setIsModalOpen(false);
       fetchServices();
 
     } catch (e) {
-      toast.error("Ошибка при создании услуги");
+      toast.error("Ошибка при сохранении");
       console.error(e);
     } finally {
-      // toast.dismiss(toastId);
       setSubmitting(false);
     }
   };
@@ -100,7 +134,6 @@ export function MasterServicesPage() {
     if (!confirm("Удалить эту услугу из прайса?")) return;
 
     try {
-      // 👇 ИСПРАВЛЕНИЕ: Используем Python API
       const response = await fetch(`${BACKEND_URL}/api/services/${id}`, {
         method: 'DELETE'
       });
@@ -108,7 +141,6 @@ export function MasterServicesPage() {
       if (!response.ok) throw new Error("Ошибка удаления");
 
       toast.success("Услуга удалена");
-      // Оптимистичное обновление
       setServices(prev => prev.filter(s => s.id !== id));
     } catch (e) {
       toast.error("Не удалось удалить услугу");
@@ -123,7 +155,7 @@ export function MasterServicesPage() {
           <p className="text-[15px] text-[#8E8E93] font-medium leading-tight">Ваш прейскурант</p>
         </div>
         <button
-          onClick={() => setIsAdding(true)}
+          onClick={openCreateModal}
           className="bg-[#007AFF] text-white w-10 h-10 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-all"
         >
           <Plus size={24} />
@@ -140,18 +172,23 @@ export function MasterServicesPage() {
           </div>
         ) : (
           services.map((s) => (
-            <ServiceCard key={s.id} service={s} onDelete={(e) => handleDelete(s.id, e)} />
+            <ServiceCard
+              key={s.id}
+              service={s}
+              onDelete={(e) => handleDelete(s.id, e)}
+              onEdit={(e) => openEditModal(s, e)}
+            />
           ))
         )}
       </div>
 
-      {isAdding && (
+      {isModalOpen && (
         <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-[2px] flex items-end justify-center p-0">
           <div className="bg-[#F2F2F7] w-full max-w-md rounded-t-[24px] pb-10 overflow-hidden animate-in slide-in-from-bottom duration-300 shadow-2xl h-[92vh] flex flex-col">
             <div className="px-5 py-4 flex justify-between items-center border-b border-slate-200 bg-white/80 sticky top-0 z-10">
-              <button onClick={() => setIsAdding(false)} className="text-[17px] text-[#007AFF]">Отмена</button>
-              <h2 className="text-[17px] font-bold">Новая услуга</h2>
-              <button onClick={handleAdd} disabled={submitting} className="text-[17px] font-bold text-[#007AFF]">
+              <button onClick={() => setIsModalOpen(false)} className="text-[17px] text-[#007AFF]">Отмена</button>
+              <h2 className="text-[17px] font-bold">{editingId ? "Редактирование" : "Новая услуга"}</h2>
+              <button onClick={handleSave} disabled={submitting} className="text-[17px] font-bold text-[#007AFF]">
                 {submitting ? <Loader2 className="animate-spin" /> : "Готово"}
               </button>
             </div>
@@ -159,8 +196,8 @@ export function MasterServicesPage() {
             <div className="px-5 mt-6 space-y-5 flex-1 overflow-y-auto no-scrollbar pb-10">
               <div className="flex flex-col items-center gap-3 mb-2">
                 <div className="w-32 h-32 rounded-3xl bg-white border border-slate-100 shadow-sm overflow-hidden flex items-center justify-center relative">
-                  {newService.image_url ? (
-                    <img src={newService.image_url} className="w-full h-full object-cover" alt="Service" />
+                  {formData.image_url ? (
+                    <img src={formData.image_url} className="w-full h-full object-cover" alt="Service" />
                   ) : (
                     <ImageIcon size={48} className="text-[#C7C7CC]" />
                   )}
@@ -168,12 +205,12 @@ export function MasterServicesPage() {
                     <Camera size={16} />
                   </div> */}
                 </div>
-                {/* Временно скрыл загрузку фото, пока на бекенде нет поддержки файлов */}
+                {/* Временно скрыл, пока нет загрузки файлов */}
                 {/* <input
                   placeholder="URL фотографии"
                   className="w-full text-center text-[13px] text-[#007AFF] bg-transparent outline-none"
-                  value={newService.image_url || ''}
-                  onChange={e => setNewService({...newService, image_url: e.target.value})}
+                  value={formData.image_url || ''}
+                  onChange={e => setFormData({...formData, image_url: e.target.value})}
                 /> */}
               </div>
 
@@ -183,8 +220,8 @@ export function MasterServicesPage() {
                   <input
                     placeholder="Например: Полный комплекс"
                     className="w-full text-[17px] outline-none caret-[#007AFF] bg-transparent"
-                    value={newService.title}
-                    onChange={e => setNewService({...newService, title: e.target.value})}
+                    value={formData.title}
+                    onChange={e => setFormData({...formData, title: e.target.value})}
                   />
                 </div>
               </div>
@@ -198,8 +235,8 @@ export function MasterServicesPage() {
                       inputMode="decimal"
                       placeholder="0"
                       className="w-full text-[17px] font-bold text-[#007AFF] outline-none caret-[#007AFF] bg-transparent"
-                      value={newService.price ?? ""}
-                      onChange={e => setNewService({...newService, price: e.target.value === '' ? undefined : Number(e.target.value)})}
+                      value={formData.price ?? ""}
+                      onChange={e => setFormData({...formData, price: e.target.value === '' ? undefined : Number(e.target.value)})}
                     />
                   </div>
                 </div>
@@ -211,8 +248,8 @@ export function MasterServicesPage() {
                       inputMode="numeric"
                       placeholder="60"
                       className="w-full text-[17px] font-bold text-[#007AFF] outline-none caret-[#007AFF] bg-transparent"
-                      value={newService.duration_minutes ?? ""}
-                      onChange={e => setNewService({...newService, duration_minutes: e.target.value === '' ? undefined : Number(e.target.value)})}
+                      value={formData.duration_minutes ?? ""}
+                      onChange={e => setFormData({...formData, duration_minutes: e.target.value === '' ? undefined : Number(e.target.value)})}
                     />
                   </div>
                 </div>
@@ -225,8 +262,8 @@ export function MasterServicesPage() {
                     placeholder="Что входит в услугу..."
                     rows={4}
                     className="w-full text-[17px] outline-none resize-none caret-[#007AFF] bg-transparent"
-                    value={newService.description}
-                    onChange={e => setNewService({...newService, description: e.target.value})}
+                    value={formData.description}
+                    onChange={e => setFormData({...formData, description: e.target.value})}
                   />
                 </div>
               </div>
@@ -238,7 +275,7 @@ export function MasterServicesPage() {
   );
 }
 
-function ServiceCard({ service, onDelete }: { service: Service; onDelete: (e: React.MouseEvent) => void }) {
+function ServiceCard({ service, onDelete, onEdit }: { service: Service; onDelete: (e: React.MouseEvent) => void; onEdit: (e: React.MouseEvent) => void }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -262,7 +299,6 @@ function ServiceCard({ service, onDelete }: { service: Service; onDelete: (e: Re
                 {service.title}
               </h3>
             </div>
-            {/* Обернул цену в span для контроля переноса */}
             <span className="text-[15px] font-bold text-[#007AFF] shrink-0 whitespace-nowrap">{service.price} ₸</span>
           </div>
           <div className="flex items-center gap-2 mt-1">
@@ -271,12 +307,23 @@ function ServiceCard({ service, onDelete }: { service: Service; onDelete: (e: Re
           </div>
         </div>
 
-        <button
-          onClick={onDelete}
-          className="p-2 text-[#FF3B30] active:opacity-40 transition-opacity"
-        >
-          <Trash2 size={20} />
-        </button>
+        <div className="flex flex-col gap-1">
+           {/* Кнопка Редактировать */}
+           <button
+            onClick={onEdit}
+            className="p-2 text-[#007AFF] active:opacity-40 transition-opacity"
+          >
+            <Edit2 size={20} />
+          </button>
+
+          {/* Кнопка Удалить */}
+          <button
+            onClick={onDelete}
+            className="p-2 text-[#FF3B30] active:opacity-40 transition-opacity"
+          >
+            <Trash2 size={20} />
+          </button>
+        </div>
       </div>
 
       {expanded && service.description && (
