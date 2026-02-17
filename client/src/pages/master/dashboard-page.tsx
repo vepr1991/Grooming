@@ -6,10 +6,6 @@ import {
   ChevronRight,
   RefreshCcw,
   Plus,
-  User,
-  Clock,
-  Calendar as CalendarIcon,
-  PawPrint,
   Wallet,
   TrendingUp,
   Ban,
@@ -20,9 +16,10 @@ import {
   Copy,
   MessageSquare,
   BarChart3,
-  Coffee
+  Coffee,
+  Trash2 // 👈 Добавил иконку урны
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "sonner"; // Sonner уже умеет делать кнопки в тостах
 
 import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -161,29 +158,31 @@ export function MasterDashboardPage() {
     catch (e) { toast.error("Ошибка", { id: tId }); }
   };
 
-  const handleDeleteBlock = async (id: string) => {
-      if(!confirm("Удалить перерыв?")) return;
-      try {
-          await api.updateAppointmentStatus(id, 'canceled');
-          toast.success("Перерыв удален");
-          fetchAppointments();
-      } catch(e) { toast.error("Ошибка"); }
+  // 👇 ИСПРАВЛЕННАЯ ЛОГИКА УДАЛЕНИЯ (Без confirm)
+  const handleDeleteBlock = (id: string) => {
+      toast("Удалить этот перерыв?", {
+        action: {
+          label: "Удалить",
+          onClick: async () => {
+             try {
+                await api.updateAppointmentStatus(id, 'canceled');
+                toast.success("Перерыв удален");
+                fetchAppointments();
+            } catch(e) { toast.error("Ошибка удаления"); }
+          }
+        },
+      });
   };
 
-  // 👇 ИСПРАВЛЕННЫЙ ФИЛЬТР: ВЕРНУЛ 'canceled' В ИСТОРИЮ
   const filteredApps = appointments.filter(app => {
       if (filter === 'pending') {
-          // Активные: Ожидает, Подтверждено, Перерыв (если не отменен)
           return ['pending', 'confirmed', 'blocked'].includes(app.status);
       } else {
-          // История: Завершено, Отменено
           return ['completed', 'canceled'].includes(app.status);
       }
   }).sort((a, b) => {
       const tA = parseDate(a.start_time).getTime();
       const tB = parseDate(b.start_time).getTime();
-      // Ожидающие: Сначала ближайшие
-      // История: Сначала новые
       return filter === 'pending' ? tA - tB : tB - tA;
   });
 
@@ -322,7 +321,7 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
       return (
         <div className="bg-[#E3E3E8] rounded-2xl border border-slate-200 p-4 flex items-center justify-between opacity-80">
             <div className="flex items-center gap-4"><div className="font-bold text-lg w-12 text-center text-[#8E8E93]">{format(bTime, 'HH:mm')}</div><div className="w-[1px] h-8 bg-slate-300" /><div className="flex items-center gap-2 text-[#8E8E93] font-bold"><Coffee size={18} /> Перерыв</div></div>
-            <button onClick={() => onDeleteBlock(app.id)} className="text-[#FF3B30] text-xs font-bold">Удалить</button>
+            <button onClick={() => onDeleteBlock(app.id)} className="w-8 h-8 flex items-center justify-center bg-white rounded-full text-[#FF3B30] shadow-sm"><Trash2 size={16} /></button>
         </div>
       );
   }
@@ -351,7 +350,6 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
         <div className="px-4 pb-4 space-y-4 animate-in slide-in-from-top-1">
           <div className="pt-3 border-t flex gap-4"><div className="w-16 h-16 rounded-xl bg-slate-50 overflow-hidden shrink-0">{sInfo?.image_url ? <img src={sInfo.image_url} className="w-full h-full object-cover" /> : <Scissors className="m-auto mt-4 opacity-10" />}</div><div className="space-y-1"><div className="font-bold text-sm">{app.pet_breed}</div><div className="text-xs bg-slate-50 p-2 rounded-lg">{sInfo?.title} • {sInfo?.price} ₸</div><div className="text-xs text-slate-400">Владелец: {app.client_name}</div></div></div>
 
-          {/* 👇 ВЕРНУЛ КНОПКИ СВЯЗИ */}
           <div className="flex gap-2">
              <button onClick={() => { navigator.clipboard.writeText(app.client_phone); toast.success("Скопировано"); window.location.href=`tel:${cleanPhone}`; }} className="flex-1 bg-slate-50 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm active:scale-95"><Copy size={14}/> {app.client_phone}</button>
              <a href={chatLink} target="_blank" className={`w-14 flex items-center justify-center rounded-xl active:scale-95 ${isTelegram ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}><MessageSquare size={20}/></a>
