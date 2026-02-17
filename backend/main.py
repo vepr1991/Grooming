@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="Grooming API", version="2.4", lifespan=lifespan)
+app = FastAPI(title="Grooming API", version="2.5", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -65,7 +65,6 @@ app.add_middleware(
 
 # --- 4. Модели данных ---
 
-# ... (Существующие модели) ...
 class ClientInfo(BaseModel):
     name: str
     phone: str
@@ -96,22 +95,33 @@ class StatusUpdate(BaseModel):
     status: str
 
 
-# 👇 НОВЫЕ МОДЕЛИ (ДЛЯ РЕФАКТОРИНГА)
+# Модели для Салонов
 class SalonUpdate(BaseModel):
     name: Optional[str] = None
     address: Optional[str] = None
     phone: Optional[str] = None
     description: Optional[str] = None
     schedule: Optional[str] = None  # JSON string
-    # Добавляй сюда любые поля, которые есть в таблице salons
+    photo_url: Optional[str] = None
+    slot_step: Optional[int] = None
 
 
+# Модели для Услуг
 class ServiceCreate(BaseModel):
     salon_id: str
     title: str
     description: Optional[str] = ""
     price: int
     duration_minutes: int
+    image_url: Optional[str] = ""
+
+
+class ServiceUpdate(BaseModel):
+    title: Optional[str] = None
+    price: Optional[int] = None
+    duration_minutes: Optional[int] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 # --- 5. Вспомогательные функции ---
@@ -220,7 +230,7 @@ def send_client_confirmation(appointment_id: str):
 
 @app.get("/")
 def health_check():
-    return {"status": "active", "service": "Grooming Backend v2.4"}
+    return {"status": "active", "service": "Grooming Backend v2.5"}
 
 
 @app.get("/api/user-status/{tg_id}")
@@ -292,7 +302,7 @@ async def update_appointment_status(appointment_id: str, payload: StatusUpdate, 
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 👇 НОВЫЕ ЭНДПОИНТЫ ДЛЯ РЕФАКТОРИНГА 👇
+# --- ЭНДПОИНТЫ УПРАВЛЕНИЯ САЛОНОМ ---
 
 # 1. Обновление профиля салона
 @app.patch("/api/salons/{salon_id}")
@@ -314,6 +324,8 @@ async def update_salon_profile(salon_id: str, payload: SalonUpdate):
 async def create_service(payload: ServiceCreate):
     try:
         data = payload.dict()
+        # При создании ставим флаг активности
+        data["is_active"] = True
         res = supabase.table("services").insert(data).execute()
         if not res.data:
             raise HTTPException(status_code=500, detail="Ошибка создания услуги")
@@ -323,17 +335,33 @@ async def create_service(payload: ServiceCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 3. Удаление услуги
+# 3. Удаление услуги (SOFT DELETE)
 @app.delete("/api/services/{service_id}")
 async def delete_service(service_id: str):
     try:
-        res = supabase.table("services").delete().eq("id", service_id).execute()
-        # Supabase при удалении возвращает удаленную запись
+        # Вместо удаления ставим флаг is_active = False
+        res = supabase.table("services").update({"is_active": False}).eq("id", service_id).execute()
+
         if not res.data:
             raise HTTPException(status_code=404, detail="Услуга не найдена")
         return {"success": True}
     except Exception as e:
         logger.error(f"Error deleting service: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 4. Редактирование услуги
+@app.patch("/api/services/{service_id}")
+async def update_service(service_id: str, payload: ServiceUpdate):
+    try:
+        data = payload.dict(exclude_unset=True)
+        res = supabase.table("services").update(data).eq("id", service_id).execute()
+
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Услуга не найдена")
+        return {"success": True, "data": res.data[0]}
+    except Exception as e:
+        logger.error(f"Error updating service: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
