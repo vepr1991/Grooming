@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="Grooming API", version="3.0", lifespan=lifespan)
+app = FastAPI(title="Grooming API", version="3.1", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -144,8 +144,13 @@ def fetch_appointment_data(appointment_id: str):
     appt = res.data
     # Парсинг Telegram юзера
     tg_user = appt.get("client_tg_user")
+
+    # Исправление: безопасный парсинг JSON
     if tg_user and isinstance(tg_user, str):
-        tg_user = json.loads(tg_user)
+        try:
+            tg_user = json.loads(tg_user)
+        except json.JSONDecodeError:
+            tg_user = None
 
     appt["client_tg_user"] = tg_user
     return appt
@@ -176,6 +181,7 @@ def send_telegram_notification_task(salon_id: str, data: BookingRequest, start_d
             bot.send_message(master_chat_id, msg, parse_mode="HTML", reply_markup=markup)
             logger.info(f"Master notified: {master_chat_id}")
     except Exception as e:
+        # Логируем, но не роняем сервер
         logger.error(f"Master notify error: {e}")
 
 
@@ -185,7 +191,13 @@ def send_client_notification(appointment_id: str, status_type: str):
         appt = fetch_appointment_data(appointment_id)
         if not appt: return
 
-        client_chat_id = appt.get("client_tg_user", {}).get("id")
+        # 👇 ИСПРАВЛЕНИЕ: Безопасное получение ID
+        client_tg = appt.get("client_tg_user")
+        if not client_tg:
+            logger.info(f"У клиента нет Telegram ID, пропускаем уведомление (Appt: {appointment_id})")
+            return
+
+        client_chat_id = client_tg.get("id")
         if not client_chat_id: return
 
         start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
@@ -217,7 +229,7 @@ def send_client_notification(appointment_id: str, status_type: str):
 # --- 5. API Endpoints ---
 
 @app.get("/")
-def health_check(): return {"status": "active", "service": "Grooming Backend v3.0"}
+def health_check(): return {"status": "active", "service": "Grooming Backend v3.1"}
 
 
 @app.get("/api/user-status/{tg_id}")

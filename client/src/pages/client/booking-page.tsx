@@ -7,13 +7,13 @@ import {
   MapPin,
   Clock,
   CheckCircle2,
-  CalendarPlus,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { api } from "@/lib/api";
 
 // --- Types ---
 type Step = 'showcase' | 'datetime' | 'details' | 'success';
@@ -36,9 +36,6 @@ type Service = {
   image_url: string;
 };
 
-// ЗАМЕНИ НА СВОЙ АДРЕС БЕКЕНДА
-const BACKEND_URL = "https://grooming-tma.onrender.com";
-
 export function ClientBookingPage() {
   const { salonId } = useParams();
   const [step, setStep] = useState<Step>('showcase');
@@ -60,7 +57,7 @@ export function ClientBookingPage() {
     agreed: false
   });
 
-  // 1. Загрузка данных салона и инфы из Telegram
+  // 1. Загрузка данных салона
   useEffect(() => {
     async function loadInitialData() {
       if (!salonId) return;
@@ -68,13 +65,12 @@ export function ClientBookingPage() {
       try {
         const [sRes, svRes] = await Promise.all([
           supabase.from('salons').select('*').eq('id', salonId).single(),
-          supabase.from('services').select('*').eq('salon_id', salonId)
+          supabase.from('services').select('*').eq('salon_id', salonId).eq('is_active', true)
         ]);
 
         if (sRes.data) setSalon(sRes.data);
         if (svRes.data) setServices(svRes.data);
 
-        // Пытаемся взять данные из Telegram Mini App
         // @ts-ignore
         const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
         if (tgUser) {
@@ -89,17 +85,14 @@ export function ClientBookingPage() {
     loadInitialData();
   }, [salonId]);
 
-  // 2. Получаем занятые слоты из базы при смене даты
+  // 2. Получаем занятые слоты
   useEffect(() => {
     async function fetchBusySlots() {
       if (!salonId || !selectedDate) return;
       setSlotsLoading(true);
 
-      // Берем ВЕСЬ день в UTC, чтобы точно захватить все записи
-      // startOfDay в локальном времени -> toISOString (UTC)
       const start = new Date(selectedDate);
       start.setHours(0, 0, 0, 0);
-
       const end = new Date(selectedDate);
       end.setHours(23, 59, 59, 999);
 
@@ -108,7 +101,6 @@ export function ClientBookingPage() {
         .select('start_time, end_time')
         .eq('salon_id', salonId)
         .neq('status', 'canceled')
-        // Используем фильтры Supabase для перекрытия диапазона
         .lte('start_time', end.toISOString())
         .gte('end_time', start.toISOString());
 
@@ -118,12 +110,16 @@ export function ClientBookingPage() {
     fetchBusySlots();
   }, [selectedDate, salonId]);
 
-
-  // Генерация доступных окон (слотов)
   const getSlots = () => {
     if (!salon || !salon.schedule) return [];
+
+    let schedule = salon.schedule;
+    if (typeof schedule === 'string') {
+        try { schedule = JSON.parse(schedule); } catch(e) { schedule = []; }
+    }
+
     const dayName = format(selectedDate, 'eeeeee', { locale: ru }).toLowerCase();
-    const dayConfig = salon.schedule.find(d => d.day.toLowerCase() === dayName);
+    const dayConfig = schedule.find((d: any) => d.day.toLowerCase() === dayName);
 
     if (!dayConfig || !dayConfig.isWorking) return [];
 
@@ -139,16 +135,10 @@ export function ClientBookingPage() {
       const slotEnd = addMinutes(slotStart, duration);
 
       const isBusy = existingAppointments.some(app => {
-        // 👇 ИСПРАВЛЕНИЕ: Игнорируем часовой пояс (+00 или Z)
-        // Превращаем "2026-02-16T10:00:00+00" в "2026-02-16T10:00:00"
-        // Браузер воспримет это как МЕСТНОЕ время
         const cleanStart = app.start_time.replace(' ', 'T').replace(/(Z|\+.*)$/, '');
         const cleanEnd = app.end_time.replace(' ', 'T').replace(/(Z|\+.*)$/, '');
-
         const appStart = new Date(cleanStart);
         const appEnd = new Date(cleanEnd);
-
-        // Проверка пересечения
         return slotStart < appEnd && slotEnd > appStart;
       });
 
@@ -160,73 +150,36 @@ export function ClientBookingPage() {
     return slots;
   };
 
-
-  // Функция создания .ics файла для календаря
-  const handleCalendarDownload = () => {
-    if (!selectedService || !selectedTime || !salon) return;
-
-    const startDate = new Date(`${format(selectedDate, 'yyyy-MM-dd')}T${selectedTime}:00`);
-    const endDate = addMinutes(startDate, selectedService.duration_minutes);
-    const formatDateICS = (date: Date) => date.toISOString().replace(/-|:|\.\d+/g, '');
-
-    const icsLines = [
-      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//GroomingApp//NONSGML v1.0//EN',
-      'BEGIN:VEVENT', `DTSTART:${formatDateICS(startDate)}`, `DTEND:${formatDateICS(endDate)}`,
-      `SUMMARY:Груминг: ${selectedService.title}`, `DESCRIPTION:Запись в ${salon.name}. Питомец: ${formData.petName}`,
-      `LOCATION:${salon.address}`, 'BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY', 'DESCRIPTION:Напоминание о записи', 'END:VALARM',
-      'END:VEVENT', 'END:VCALENDAR'
-    ];
-
-    const blob = new Blob([icsLines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'grooming-booking.ics');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // ФИНАЛЬНЫЙ ШАГ: Отправка на Python Бекенд
   const handleFinish = async () => {
     if (!selectedService || !selectedTime || !salonId) return;
 
     setLoading(true);
 
-    // 👇 ПОЛУЧАЕМ ДАННЫЕ TG ПОЛЬЗОВАТЕЛЯ
     // @ts-ignore
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/book`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          salonId,
-          service: selectedService,
-          date: format(selectedDate, 'yyyy-MM-dd'),
-          time: selectedTime,
-          client: {
-            name: formData.name,
-            phone: formData.phone,
-            // ✅ ОТПРАВЛЯЕМ ПОЛЬЗОВАТЕЛЯ ТЕЛЕГРАМ
-            telegram_user: tgUser || null
-          },
-          pet: { name: formData.petName, petBreed: formData.petBreed }
-        })
-      });
+      const payload = {
+        salonId,
+        service: selectedService,
+        date: format(selectedDate, 'yyyy-MM-dd'),
+        time: selectedTime,
+        client: {
+          name: formData.name,
+          phone: formData.phone,
+          telegram_user: tgUser || null
+        },
+        pet: { name: formData.petName, petBreed: formData.petBreed }
+      };
 
-      const result = await response.json();
+      await api.createBooking(payload);
 
-      if (result.success) {
-        setStep('success');
-        // @ts-ignore
-        if (window.confetti) window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
-      } else {
-        toast.error("Ошибка сервера: " + result.error);
-      }
-    } catch (err) {
-      toast.error("Не удалось связаться с сервером");
+      setStep('success');
+      // @ts-ignore
+      if (window.confetti) window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+
+    } catch (err: any) {
+      toast.error("Ошибка сервера: " + (err.message || "Неизвестная ошибка"));
     } finally {
       setLoading(false);
     }
@@ -238,7 +191,6 @@ export function ClientBookingPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#F2F2F7] max-w-md mx-auto overflow-x-hidden font-sans">
-      {/* HEADER */}
       {step !== 'success' && (
         <header className="bg-white/80 backdrop-blur-md sticky top-0 z-20 px-5 pt-12 pb-4 border-b border-slate-100 flex items-center gap-4">
           {step !== 'showcase' && (
@@ -253,7 +205,6 @@ export function ClientBookingPage() {
       )}
 
       <div className="flex-1 overflow-y-auto no-scrollbar">
-        {/* ШАГ 1: ВИТРИНА */}
         {step === 'showcase' && (
           <div className="animate-in fade-in duration-500">
             <div className="relative h-56 w-full overflow-hidden">
@@ -289,7 +240,6 @@ export function ClientBookingPage() {
           </div>
         )}
 
-        {/* ШАГ 2: ВРЕМЯ */}
         {step === 'datetime' && (
           <div className="p-5 space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
             <section>
@@ -338,7 +288,6 @@ export function ClientBookingPage() {
           </div>
         )}
 
-        {/* ШАГ 3: ФОРМА */}
         {step === 'details' && (
           <div className="p-5 space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
             <div className="bg-white rounded-[24px] p-5 border border-slate-100 space-y-4 shadow-sm">
@@ -404,16 +353,10 @@ export function ClientBookingPage() {
             </div>
             <h2 className="text-[32px] font-black text-black mb-3 tracking-tight">Готово!</h2>
             <p className="text-[17px] text-[#8E8E93] font-bold leading-relaxed mb-12 px-4">
-              Мы пришлем уведомление в Telegram за час до начала записи. 🎉
+              Мы пришлем уведомление когда мастер подтвердит вашу заявку. 🎉
             </p>
 
             <div className="w-full space-y-3">
-              <button
-                onClick={handleCalendarDownload}
-                className="w-full bg-[#007AFF] text-white py-4 rounded-[22px] font-bold flex items-center justify-center gap-3 shadow-xl shadow-blue-100 active:scale-95 transition-all"
-              >
-                <CalendarPlus size={20} /> Добавить в календарь
-              </button>
               <button onClick={() => { setStep('showcase'); setSelectedService(null); setSelectedTime(null); }} className="w-full py-4 text-[#007AFF] font-bold text-[17px] active:opacity-50">
                 Вернуться назад
               </button>
