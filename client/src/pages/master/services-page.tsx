@@ -3,7 +3,8 @@ import { Plus, Trash2, ChevronDown, Scissors, Image as ImageIcon, Camera, Loader
 import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
-import { api } from "@/lib/api"; // 👈 НОВЫЙ ИМПОРТ
+import { api } from "@/lib/api";
+import { uploadImage } from "@/lib/upload"; // 👈 ИМПОРТ ЗАГРУЗЧИКА
 
 type Service = {
   id: string;
@@ -22,7 +23,8 @@ export function MasterServicesPage() {
   // Состояние модалки
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null); // ID услуги, которую редактируем
+  const [uploading, setUploading] = useState(false); // 👈 Состояние загрузки фото
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<Partial<Service>>({
     title: "",
@@ -37,12 +39,11 @@ export function MasterServicesPage() {
   const fetchServices = async () => {
     if (!salonId) return;
     setLoading(true);
-    // Чтение через Supabase (безопасно и быстро, RLS позволяет)
     const { data, error } = await supabase
       .from("services")
       .select("*")
       .eq("salon_id", salonId)
-      .eq("is_active", true) // Показываем только активные
+      .eq("is_active", true)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -57,14 +58,12 @@ export function MasterServicesPage() {
     fetchServices();
   }, [salonId]);
 
-  // Открыть модалку для СОЗДАНИЯ
   const openCreateModal = () => {
     setEditingId(null);
     setFormData({ title: "", price: undefined, duration_minutes: 60, description: "", image_url: "" });
     setIsModalOpen(true);
   };
 
-  // Открыть модалку для РЕДАКТИРОВАНИЯ
   const openEditModal = (service: Service, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingId(service.id);
@@ -76,6 +75,30 @@ export function MasterServicesPage() {
       image_url: service.image_url || ""
     });
     setIsModalOpen(true);
+  };
+
+  // 👇 ОБРАБОТЧИК ЗАГРУЗКИ ФАЙЛА
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+
+    const file = e.target.files[0];
+    // Простая проверка размера (2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Файл слишком большой (макс 2МБ)");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const url = await uploadImage(file);
+      setFormData(prev => ({ ...prev, image_url: url }));
+      toast.success("Фото загружено!");
+    } catch (error) {
+      toast.error("Ошибка загрузки фото");
+      console.error(error);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -93,15 +116,12 @@ export function MasterServicesPage() {
         duration_minutes: Number(formData.duration_minutes),
         description: formData.description,
         image_url: formData.image_url,
-        salon_id: salonId, // Нужно только для создания
+        salon_id: salonId,
       };
 
-      // 👇 ИСПОЛЬЗУЕМ НОВЫЙ API КЛИЕНТ
       if (editingId) {
-        // РЕЖИМ РЕДАКТИРОВАНИЯ
         await api.updateService(editingId, payload);
       } else {
-        // РЕЖИМ СОЗДАНИЯ
         await api.createService(payload);
       }
 
@@ -111,7 +131,6 @@ export function MasterServicesPage() {
 
     } catch (e: any) {
       toast.error(e.message || "Ошибка при сохранении");
-      console.error(e);
     } finally {
       setSubmitting(false);
     }
@@ -122,9 +141,7 @@ export function MasterServicesPage() {
     if (!confirm("Удалить эту услугу из прайса?")) return;
 
     try {
-      // 👇 ИСПОЛЬЗУЕМ НОВЫЙ API КЛИЕНТ
       await api.deleteService(id);
-
       toast.success("Услуга удалена");
       setServices(prev => prev.filter(s => s.id !== id));
     } catch (e: any) {
@@ -173,20 +190,45 @@ export function MasterServicesPage() {
             <div className="px-5 py-4 flex justify-between items-center border-b border-slate-200 bg-white/80 sticky top-0 z-10">
               <button onClick={() => setIsModalOpen(false)} className="text-[17px] text-[#007AFF]">Отмена</button>
               <h2 className="text-[17px] font-bold">{editingId ? "Редактирование" : "Новая услуга"}</h2>
-              <button onClick={handleSave} disabled={submitting} className="text-[17px] font-bold text-[#007AFF]">
+              <button onClick={handleSave} disabled={submitting || uploading} className="text-[17px] font-bold text-[#007AFF] disabled:opacity-50">
                 {submitting ? <Loader2 className="animate-spin" /> : "Готово"}
               </button>
             </div>
 
             <div className="px-5 mt-6 space-y-5 flex-1 overflow-y-auto no-scrollbar pb-10">
+              {/* Блок загрузки фото */}
               <div className="flex flex-col items-center gap-3 mb-2">
-                <div className="w-32 h-32 rounded-3xl bg-white border border-slate-100 shadow-sm overflow-hidden flex items-center justify-center relative">
+                <div className="w-32 h-32 rounded-3xl bg-white border border-slate-100 shadow-sm overflow-hidden flex items-center justify-center relative group">
                   {formData.image_url ? (
                     <img src={formData.image_url} className="w-full h-full object-cover" alt="Service" />
                   ) : (
                     <ImageIcon size={48} className="text-[#C7C7CC]" />
                   )}
+
+                  {/* Лоадер при загрузке */}
+                  {uploading && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-20">
+                      <Loader2 className="animate-spin text-white" size={32} />
+                    </div>
+                  )}
+
+                  {/* Кнопка загрузки (прозрачный инпут) */}
+                  <label className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/10 transition-colors cursor-pointer z-10">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleFileChange}
+                      disabled={uploading}
+                    />
+                    {!uploading && (
+                      <div className="absolute bottom-2 right-2 bg-[#007AFF] text-white p-2 rounded-full shadow-lg">
+                        <Camera size={16} />
+                      </div>
+                    )}
+                  </label>
                 </div>
+                {uploading && <p className="text-[12px] text-[#8E8E93]">Загрузка фото...</p>}
               </div>
 
               <div className="space-y-1.5">
@@ -283,7 +325,6 @@ function ServiceCard({ service, onDelete, onEdit }: { service: Service; onDelete
         </div>
 
         <div className="flex flex-col gap-1">
-           {/* Кнопка Редактировать */}
            <button
             onClick={onEdit}
             className="p-2 text-[#007AFF] active:opacity-40 transition-opacity"
@@ -291,7 +332,6 @@ function ServiceCard({ service, onDelete, onEdit }: { service: Service; onDelete
             <Edit2 size={20} />
           </button>
 
-          {/* Кнопка Удалить */}
           <button
             onClick={onDelete}
             className="p-2 text-[#FF3B30] active:opacity-40 transition-opacity"
