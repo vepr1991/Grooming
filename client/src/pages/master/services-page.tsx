@@ -329,7 +329,7 @@ function ServiceCard({ service, onDelete, onEdit }: { service: Service; onDelete
       {expanded && service.description && (
         <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-300">
           <div className="pt-3 border-t border-[#F2F2F7] overflow-hidden">
-            <p className="text-[14px] text-[#48484A] leading-relaxed font-medium break-all whitespace-pre-wrap">
+            <p className="text-[14px] text-[#48484A] leading-relaxed font-medium break-words whitespace-pre-wrap">
               {service.description}
             </p>
           </div>
