@@ -1,18 +1,18 @@
 import { useEffect, useState } from "react";
 import {
   Search,
-  User,
-  Phone,
   Calendar,
   MessageSquare,
   Scissors,
-  ChevronRight,
   Loader2,
-  PawPrint
+  PawPrint,
+  ChevronDown,
+  Copy
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
+import { toast } from "sonner";
 
 export function MasterClientsPage() {
   const [clients, setClients] = useState<any[]>([]);
@@ -77,43 +77,119 @@ export function MasterClientsPage() {
 }
 
 function ClientCard({ client }: { client: any }) {
+  const [expanded, setExpanded] = useState(false);
+
   // Определяем линк для связи (ТГ или Ватсап)
   let tgUsername = null;
   if (client.tg_user) {
     const user = typeof client.tg_user === 'string' ? JSON.parse(client.tg_user) : client.tg_user;
     tgUsername = user?.username;
   }
-  const chatLink = tgUsername ? `https://t.me/${tgUsername}` : `https://wa.me/${client.phone.replace(/\D/g,'')}`;
+
+  const cleanPhone = client.phone.replace(/[^0-9+]/g, '');
+  const chatLink = tgUsername ? `https://t.me/${tgUsername}` : `https://wa.me/${cleanPhone}`;
+  const isTelegram = !!tgUsername;
 
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center gap-4 active:scale-[0.98] transition-all">
-      <div className="w-14 h-14 rounded-full bg-[#F2F2F7] flex items-center justify-center text-[#007AFF] shrink-0">
-        <User size={28} />
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex justify-between items-start">
-          <h3 className="text-[17px] font-bold text-black truncate">{client.name}</h3>
-          <a href={chatLink} target="_blank" className="text-[#007AFF] bg-[#007AFF]/5 p-2 rounded-full">
-            <MessageSquare size={18} />
-          </a>
-        </div>
-
-        <div className="flex items-center gap-2 text-[#8E8E93] text-[13px] mt-0.5">
-          <PawPrint size={14} className="text-orange-400" />
-          <span className="font-medium">{client.pet_name}</span>
-          {client.pet_breed && <span className="opacity-60">• {client.pet_breed}</span>}
-        </div>
-
-        <div className="flex items-center gap-4 mt-2 pt-2 border-t border-slate-50">
-          <div className="flex items-center gap-1 text-[11px] font-bold text-[#8E8E93] uppercase">
-            <Scissors size={12} /> {client.total_visits} визитов
+    <div
+      className={`bg-white rounded-[20px] shadow-sm border border-slate-100 transition-all duration-300 overflow-hidden ${expanded ? 'shadow-md' : ''}`}
+    >
+      {/* Шапка карточки (всегда видна) */}
+      <div
+        className="p-4 flex items-center justify-between cursor-pointer active:bg-slate-50 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="w-12 h-12 rounded-full bg-[#F2F2F7] flex items-center justify-center text-[#007AFF] shrink-0 font-bold text-lg">
+            {client.name.charAt(0).toUpperCase()}
           </div>
-          <div className="flex items-center gap-1 text-[11px] font-bold text-[#8E8E93] uppercase">
-            <Calendar size={12} /> Был {format(new Date(client.last_visit.substring(0,10)), 'd MMM', { locale: ru })}
+
+          <div className="min-w-0">
+            <h3 className="text-[17px] font-bold text-black truncate">{client.name}</h3>
+            <div className="flex items-center gap-1.5 text-[#8E8E93] text-[13px]">
+              <PawPrint size={14} className="text-orange-400 shrink-0" />
+              <span className="truncate font-medium">{client.pet_name}</span>
+            </div>
           </div>
         </div>
+
+        <ChevronDown
+          size={20}
+          className={`text-[#C7C7CC] transition-transform duration-300 shrink-0 ${expanded ? 'rotate-180' : ''}`}
+        />
       </div>
+
+      {/* Раскрывающийся контент */}
+      {expanded && (
+        <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-300">
+          <div className="pt-3 border-t border-[#F2F2F7] space-y-4">
+
+            {/* Детали питомца (полный текст) */}
+            <div className="bg-[#F2F2F7] rounded-xl p-3">
+              <div className="flex items-start gap-2 mb-1">
+                <span className="text-[11px] font-bold text-[#8E8E93] uppercase mt-0.5">Питомец</span>
+              </div>
+              <p className="text-[15px] font-bold text-black break-words leading-tight">
+                {client.pet_name}
+              </p>
+              {client.pet_breed && (
+                <p className="text-[13px] text-[#48484A] mt-1 break-words">
+                  {client.pet_breed}
+                </p>
+              )}
+            </div>
+
+            {/* Статистика */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center gap-2 bg-white border border-slate-100 p-2.5 rounded-xl shadow-sm">
+                <Scissors size={16} className="text-[#007AFF]" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-[#8E8E93] font-bold uppercase">Визитов</span>
+                  <span className="text-[14px] font-bold">{client.total_visits}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 bg-white border border-slate-100 p-2.5 rounded-xl shadow-sm">
+                <Calendar size={16} className="text-[#007AFF]" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-[#8E8E93] font-bold uppercase">Последний</span>
+                  <span className="text-[14px] font-bold">
+                    {format(new Date(client.last_visit.substring(0,10)), 'd MMM', { locale: ru })}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Кнопки связи */}
+            <div className="flex gap-2 pt-1">
+               <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(client.phone);
+                    toast.success("Номер скопирован");
+                    window.location.href = `tel:${cleanPhone}`;
+                  }}
+                  className="flex-1 bg-[#F2F2F7] hover:bg-slate-200 text-black py-3 rounded-xl text-[14px] font-bold active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <Copy size={16} className="text-[#8E8E93]" />
+                  <span>{client.phone}</span>
+                </button>
+
+                <a
+                  href={chatLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`w-14 flex items-center justify-center rounded-xl active:scale-95 transition-all shrink-0 hover:opacity-80 ${isTelegram ? 'bg-[#E3F2FF] text-[#007AFF]' : 'bg-[#E8F5E9] text-[#2E7D32]'}`}
+                >
+                  {isTelegram ? (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                  ) : (
+                    <MessageSquare size={24} />
+                  )}
+                </a>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
