@@ -7,7 +7,7 @@ import re
 import hmac
 import hashlib
 from urllib.parse import unquote
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
 
@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, validator
 from supabase import create_client, Client
 import telebot
 from telebot import types
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # --- 1. Настройка и Конфигурация ---
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -31,23 +32,27 @@ if not all([SUPABASE_URL, SUPABASE_KEY, TELEGRAM_BOT_TOKEN]):
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
+scheduler = AsyncIOScheduler()
 
 
 # --- 2. Жизненный цикл ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if os.environ.get("RUN_BOT") != "false":
-        logger.info("🚀 Запуск сервера и Telegram бота...")
+        logger.info("🚀 Запуск сервера, бота и планировщика...")
         threading.Thread(target=start_bot_polling, daemon=True).start()
+        scheduler.add_job(check_upcoming_appointments, 'interval', minutes=5)
+        scheduler.start()
     yield
     logger.info("🛑 Остановка сервера...")
     try:
         bot.stop_polling()
+        scheduler.shutdown()
     except Exception:
         pass
 
 
-app = FastAPI(title="Grooming API", version="3.4", lifespan=lifespan)
+app = FastAPI(title="Grooming API", version="3.6", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -123,27 +128,20 @@ class ServiceUpdate(BaseModel):
 
 
 # --- 4. Безопасность (AUTH) ---
-
 def verify_telegram_data(x_telegram_init_data: str = Header(None)) -> Optional[int]:
-    """Проверяет initData от Telegram и возвращает ID пользователя"""
     if not x_telegram_init_data: return None
-
     try:
         data_dict = {}
         for part in x_telegram_init_data.split('&'):
             if '=' in part:
                 key, value = part.split('=', 1)
                 data_dict[key] = unquote(value)
-
         received_hash = data_dict.pop('hash', '')
         if not received_hash: return None
-
         data_check_string = '\n'.join([f'{k}={v}' for k, v in sorted(data_dict.items())])
         secret_key = hmac.new(b"WebAppData", TELEGRAM_BOT_TOKEN.encode(), hashlib.sha256).digest()
         calculated_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
-
         if calculated_hash != received_hash: return None
-
         user_data = json.loads(data_dict.get('user', '{}'))
         return user_data.get('id')
     except Exception as e:
@@ -173,20 +171,68 @@ def check_overlap(salon_id: str, start_time: datetime, end_time: datetime) -> bo
         return True
 
 
+async def check_upcoming_appointments():
+    """Планировщик напоминаний"""
+    logger.info("⏰ Checking for reminders...")
+    try:
+        now_utc = datetime.now(timezone.utc)
+        target_time_start = now_utc + timedelta(minutes=55)
+        target_time_end = now_utc + timedelta(minutes=65)
+
+        response = supabase.table("appointments") \
+            .select("*, salons(name, phone), services(title)") \
+            .eq("status", "confirmed") \
+            .eq("reminder_sent", False) \
+            .gte("start_time", target_time_start.isoformat()) \
+            .lte("start_time", target_time_end.isoformat()) \
+            .execute()
+
+        appointments = response.data or []
+
+        for appt in appointments:
+            try:
+                tg_user_raw = appt.get("client_tg_user")
+                if not tg_user_raw: continue
+                tg_user = tg_user_raw
+                if isinstance(tg_user_raw, str):
+                    try:
+                        tg_user = json.loads(tg_user_raw)
+                    except:
+                        continue
+                client_id = tg_user.get("id")
+                if not client_id: continue
+
+                start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
+                time_str = start_dt.strftime('%H:%M')
+                salon_name = appt['salons']['name']
+                service_title = appt['services']['title']
+
+                msg = (
+                    f"⏰ <b>Напоминание!</b>\n\n"
+                    f"Через час ({time_str}) у вас запись в <b>{salon_name}</b>.\n"
+                    f"✂️ Услуга: {service_title}\n\n"
+                    f"<i>Ждем вас!</i>"
+                )
+                bot.send_message(client_id, msg, parse_mode="HTML")
+                supabase.table("appointments").update({"reminder_sent": True}).eq("id", appt['id']).execute()
+                logger.info(f"Reminder sent to {client_id}")
+            except Exception as e:
+                logger.error(f"Reminder error: {e}")
+    except Exception as e:
+        logger.error(f"Scheduler error: {e}")
+
+
 def send_telegram_notification_task(salon_id: str, data: BookingRequest, start_dt: datetime):
-    """Уведомление МАСТЕРУ (Исправленный подробный формат)"""
+    """Уведомление МАСТЕРУ"""
     try:
         res = supabase.table("salons").select("telegram_chat_id, name").eq("id", salon_id).single().execute()
         if not res.data: return
-
         master_chat_id = res.data.get("telegram_chat_id")
         salon_name = res.data.get("name")
 
         if master_chat_id:
-            # Формируем строку питомца с породой
             pet_info = f"{data.pet.name}"
-            if data.pet.petBreed:
-                pet_info += f" ({data.pet.petBreed})"
+            if data.pet.petBreed: pet_info += f" ({data.pet.petBreed})"
 
             msg = (
                 f"🔔 <b>Новая запись в {salon_name}!</b>\n\n"
@@ -198,22 +244,21 @@ def send_telegram_notification_task(salon_id: str, data: BookingRequest, start_d
                 f"⏰ <b>Время:</b> {start_dt.strftime('%H:%M')}\n\n"
                 f"<i>Зайдите в приложение для подтверждения.</i>"
             )
-
             markup = types.InlineKeyboardMarkup()
             FRONTEND_URL = "https://grooming-react-front.onrender.com"
             markup.add(
                 types.InlineKeyboardButton("Открыть админку", web_app=types.WebAppInfo(url=f"{FRONTEND_URL}/master")))
             bot.send_message(master_chat_id, msg, parse_mode="HTML", reply_markup=markup)
-            logger.info(f"Master notified: {master_chat_id}")
     except Exception as e:
         logger.error(f"Master notify error: {e}")
 
 
 def send_client_notification(appointment_id: str, status_type: str):
-    """Уведомление КЛИЕНТУ"""
+    """Уведомление КЛИЕНТУ (Подробное)"""
     try:
-        res = supabase.table("appointments").select("*, salons(name), services(title)").eq("id",
-                                                                                           appointment_id).single().execute()
+        # Запрашиваем также телефон салона и название услуги
+        res = supabase.table("appointments").select("*, salons(name, phone), services(title)").eq("id",
+                                                                                                  appointment_id).single().execute()
         if not res.data: return
         appt = res.data
 
@@ -229,23 +274,45 @@ def send_client_notification(appointment_id: str, status_type: str):
         start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
         date_str = start_dt.strftime('%d.%m.%Y')
         time_str = start_dt.strftime('%H:%M')
+
         salon_name = appt['salons']['name']
+        salon_phone = appt['salons'].get('phone', '')
+        service_title = appt['services']['title']
 
-        msgs = {
-            'confirmed': f"✅ <b>Ваша запись подтверждена!</b>\n\n✂️ <b>Салон:</b> {salon_name}\n📅 <b>Дата:</b> {date_str}\n⏰ <b>Время:</b> {time_str}",
-            'canceled': f"❌ <b>Ваша запись отменена</b>\n\n✂️ <b>Салон:</b> {salon_name}\n📅 <b>Дата:</b> {date_str}\n⏰ <b>Время:</b> {time_str}\n\n<i>Приносим извинения.</i>"
-        }
+        msg = ""
 
-        if status_type in msgs:
-            bot.send_message(tg_user.get("id"), msgs[status_type], parse_mode="HTML")
-    except Exception:
-        pass
+        if status_type == 'confirmed':
+            msg = (
+                f"✅ <b>Ваша запись подтверждена!</b>\n\n"
+                f"✂️ <b>Салон:</b> {salon_name}\n"
+                f"🛠 <b>Услуга:</b> {service_title}\n"
+                f"📅 <b>Дата:</b> {date_str}\n"
+                f"⏰ <b>Время:</b> {time_str}"
+            )
+            if salon_phone:
+                msg += f"\n\n📞 <b>Телефон для связи:</b> {salon_phone}"
+
+        elif status_type == 'canceled':
+            msg = (
+                f"❌ <b>Ваша запись отменена</b>\n\n"
+                f"✂️ <b>Салон:</b> {salon_name}\n"
+                f"🛠 <b>Услуга:</b> {service_title}\n"
+                f"📅 <b>Дата:</b> {date_str}\n"
+                f"⏰ <b>Время:</b> {time_str}\n\n"
+                f"<i>Приносим извинения.</i>"
+            )
+
+        if msg:
+            bot.send_message(tg_user.get("id"), msg, parse_mode="HTML")
+
+    except Exception as e:
+        logger.error(f"Client notify error: {e}")
 
 
 # --- 6. API Endpoints ---
 
 @app.get("/")
-def health_check(): return {"status": "active", "service": "Grooming Backend v3.4"}
+def health_check(): return {"status": "active", "service": "Grooming Backend v3.6"}
 
 
 @app.get("/api/user-status/{tg_id}")
