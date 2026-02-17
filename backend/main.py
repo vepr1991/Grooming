@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="Grooming API", version="2.6", lifespan=lifespan)
+app = FastAPI(title="Grooming API", version="2.7", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -162,7 +162,7 @@ def check_overlap(salon_id: str, start_time: datetime, end_time: datetime) -> bo
 
 
 def send_telegram_notification_task(salon_id: str, booking_data: BookingRequest, start_dt: datetime):
-    """Отправка уведомления МАСТЕРУ"""
+    """Отправка уведомления МАСТЕРУ о новой записи"""
     try:
         res = supabase.table("salons").select("telegram_chat_id, name").eq("id", salon_id).single().execute()
         if not res.data: return
@@ -195,7 +195,7 @@ def send_telegram_notification_task(salon_id: str, booking_data: BookingRequest,
 
 
 def send_client_confirmation(appointment_id: str):
-    """Отправка уведомления КЛИЕНТУ"""
+    """Отправка уведомления КЛИЕНТУ о подтверждении"""
     try:
         app_res = supabase.table("appointments").select("*, salons(name, phone), services(title)").eq("id",
                                                                                                       appointment_id).single().execute()
@@ -234,11 +234,50 @@ def send_client_confirmation(appointment_id: str):
         logger.error(f"Ошибка отправки уведомления клиенту: {e}")
 
 
+def send_client_cancellation(appointment_id: str):
+    """Отправка уведомления КЛИЕНТУ об отмене"""
+    try:
+        app_res = supabase.table("appointments").select("*, salons(name, phone), services(title)").eq("id",
+                                                                                                      appointment_id).single().execute()
+        if not app_res.data: return
+
+        appt = app_res.data
+        client_tg_raw = appt.get("client_tg_user")
+        if not client_tg_raw: return
+
+        if isinstance(client_tg_raw, str):
+            client_tg = json.loads(client_tg_raw)
+        else:
+            client_tg = client_tg_raw
+
+        client_chat_id = client_tg.get("id")
+        if not client_chat_id: return
+
+        start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
+        date_str = start_dt.strftime('%d.%m.%Y')
+        time_str = start_dt.strftime('%H:%M')
+        salon_name = appt['salons']['name'] if appt.get('salons') else "Салон"
+        service_title = appt['services']['title'] if appt.get('services') else "Услуга"
+
+        msg = (
+            f"❌ <b>Ваша запись отменена</b>\n\n"
+            f"✂️ <b>Салон:</b> {salon_name}\n"
+            f"🛠 <b>Услуга:</b> {service_title}\n"
+            f"📅 <b>Дата:</b> {date_str}\n"
+            f"⏰ <b>Время:</b> {time_str}\n\n"
+            f"<i>Приносим извинения. Попробуйте записаться на другое время.</i>"
+        )
+        bot.send_message(client_chat_id, msg, parse_mode="HTML")
+        logger.info(f"Уведомление об отмене отправлено клиенту: {client_chat_id}")
+    except Exception as e:
+        logger.error(f"Ошибка отправки уведомления об отмене: {e}")
+
+
 # --- 6. API Endpoints ---
 
 @app.get("/")
 def health_check():
-    return {"status": "active", "service": "Grooming Backend v2.6"}
+    return {"status": "active", "service": "Grooming Backend v2.7"}
 
 
 @app.get("/api/user-status/{tg_id}")
@@ -302,8 +341,12 @@ async def update_appointment_status(appointment_id: str, payload: StatusUpdate, 
         res = supabase.table("appointments").update({"status": payload.status}).eq("id", appointment_id).execute()
         if not res.data: raise HTTPException(status_code=404, detail="Запись не найдена")
 
+        # Уведомляем клиента в зависимости от статуса
         if payload.status == 'confirmed':
             background_tasks.add_task(send_client_confirmation, appointment_id)
+        elif payload.status == 'canceled':
+            background_tasks.add_task(send_client_cancellation, appointment_id)
+
         return {"success": True, "data": res.data[0]}
     except Exception as e:
         logger.error(f"Error updating status: {e}")
@@ -312,19 +355,14 @@ async def update_appointment_status(appointment_id: str, payload: StatusUpdate, 
 
 # --- ЭНДПОИНТЫ УПРАВЛЕНИЯ САЛОНОМ ---
 
-# 1. Регистрация нового салона
 @app.post("/api/register")
 async def register_salon(payload: SalonCreate):
     try:
-        # Проверяем, нет ли уже салона с таким Telegram ID
         existing = supabase.table("salons").select("id").eq("telegram_chat_id", payload.telegram_chat_id).execute()
         if existing.data and len(existing.data) > 0:
             return {"success": True, "data": existing.data[0], "message": "Салон уже существует"}
 
-        # Создаем новый салон
         slug_val = f"salon_{payload.telegram_chat_id}_{int(time.time())}"
-
-        # Дефолтное расписание (Пн-Пт 10-20, Сб-Вс Выходной)
         default_schedule = [
             {"day": "Пн", "hours": {"start": "10:00", "end": "20:00"}, "isWorking": True},
             {"day": "Вт", "hours": {"start": "10:00", "end": "20:00"}, "isWorking": True},
@@ -361,7 +399,6 @@ async def register_salon(payload: SalonCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 2. Обновление профиля салона
 @app.patch("/api/salons/{salon_id}")
 async def update_salon_profile(salon_id: str, payload: SalonUpdate):
     try:
@@ -375,7 +412,6 @@ async def update_salon_profile(salon_id: str, payload: SalonUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 3. Создание услуги
 @app.post("/api/services")
 async def create_service(payload: ServiceCreate):
     try:
@@ -390,7 +426,6 @@ async def create_service(payload: ServiceCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 4. Удаление услуги (SOFT DELETE)
 @app.delete("/api/services/{service_id}")
 async def delete_service(service_id: str):
     try:
@@ -403,7 +438,6 @@ async def delete_service(service_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 5. Редактирование услуги
 @app.patch("/api/services/{service_id}")
 async def update_service(service_id: str, payload: ServiceUpdate):
     try:
