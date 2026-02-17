@@ -4,10 +4,13 @@ import { format, addDays, isSameDay, isBefore, parse, addMinutes, startOfToday }
 import { ru } from "date-fns/locale";
 import {
   ChevronLeft,
+  ChevronRight,
   MapPin,
   Clock,
   CheckCircle2,
   Loader2,
+  Image as ImageIcon,
+  X
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,7 +27,9 @@ type Salon = {
   address: string;
   phone: string;
   photo_url: string;
+  description: string;
   schedule: any[];
+  gallery: string[]; // 👈 Добавили поле галереи
   slot_step: number;
 };
 
@@ -57,6 +62,9 @@ export function ClientBookingPage() {
     agreed: false
   });
 
+  // Lightbox State (для просмотра фото)
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
   // 1. Загрузка данных салона
   useEffect(() => {
     async function loadInitialData() {
@@ -68,7 +76,30 @@ export function ClientBookingPage() {
           supabase.from('services').select('*').eq('salon_id', salonId).eq('is_active', true)
         ]);
 
-        if (sRes.data) setSalon(sRes.data);
+        if (sRes.data) {
+           // Парсим галерею (она может быть JSON-строкой или массивом)
+           let parsedGallery = [];
+           try {
+             parsedGallery = typeof sRes.data.gallery === 'string'
+               ? JSON.parse(sRes.data.gallery)
+               : sRes.data.gallery || [];
+           } catch(e) { parsedGallery = []; }
+
+           // Парсим расписание
+           let parsedSchedule = [];
+           try {
+             parsedSchedule = typeof sRes.data.schedule === 'string'
+                ? JSON.parse(sRes.data.schedule)
+                : sRes.data.schedule || [];
+           } catch(e) { parsedSchedule = []; }
+
+           setSalon({
+               ...sRes.data,
+               schedule: parsedSchedule,
+               gallery: Array.isArray(parsedGallery) ? parsedGallery : []
+           });
+        }
+
         if (svRes.data) setServices(svRes.data);
 
         // @ts-ignore
@@ -77,6 +108,7 @@ export function ClientBookingPage() {
           setFormData(prev => ({ ...prev, name: tgUser.first_name || '' }));
         }
       } catch (e) {
+        console.error(e);
         toast.error("Ошибка загрузки данных");
       } finally {
         setLoading(false);
@@ -113,13 +145,8 @@ export function ClientBookingPage() {
   const getSlots = () => {
     if (!salon || !salon.schedule) return [];
 
-    let schedule = salon.schedule;
-    if (typeof schedule === 'string') {
-        try { schedule = JSON.parse(schedule); } catch(e) { schedule = []; }
-    }
-
     const dayName = format(selectedDate, 'eeeeee', { locale: ru }).toLowerCase();
-    const dayConfig = schedule.find((d: any) => d.day.toLowerCase() === dayName);
+    const dayConfig = salon.schedule.find((d: any) => d.day.toLowerCase() === dayName);
 
     if (!dayConfig || !dayConfig.isWorking) return [];
 
@@ -216,6 +243,31 @@ export function ClientBookingPage() {
                 </div>
               </div>
             </div>
+
+            {/* ОПИСАНИЕ САЛОНА */}
+            <div className="p-5 pb-0 space-y-3">
+                 {salon?.description && <p className="text-[14px] text-[#3A3A3C] leading-relaxed bg-white p-4 rounded-[20px] shadow-sm">{salon.description}</p>}
+            </div>
+
+            {/* 👇 ГАЛЕРЕЯ (ПОРТФОЛИО) */}
+            {salon?.gallery && salon.gallery.length > 0 && (
+               <div className="p-5 pb-0 space-y-3">
+                   <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 flex items-center gap-2">
+                       <ImageIcon size={14}/> Наши работы
+                   </h3>
+                   <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-5 px-5 snap-x">
+                       {salon.gallery.map((img, i) => (
+                           <div key={i} className="snap-start shrink-0 first:pl-0">
+                               <img
+                                   src={img}
+                                   className="w-32 h-32 rounded-[20px] object-cover shadow-sm cursor-pointer active:scale-95 transition-transform border border-slate-100"
+                                   onClick={() => setLightboxIndex(i)}
+                               />
+                           </div>
+                       ))}
+                   </div>
+               </div>
+            )}
 
             <div className="p-5 space-y-4">
               <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Наши услуги</h3>
@@ -364,6 +416,35 @@ export function ClientBookingPage() {
           </div>
         )}
       </div>
+
+      {/* LIGHTBOX (ПРОСМОТР ФОТО) */}
+      {lightboxIndex !== null && salon?.gallery && (
+          <div className="fixed inset-0 z-50 bg-black flex items-center justify-center animate-in fade-in duration-200" onClick={() => setLightboxIndex(null)}>
+              <button className="absolute top-4 right-4 text-white/80 p-2"><X size={32}/></button>
+              <img
+                src={salon.gallery[lightboxIndex]}
+                className="max-w-full max-h-full object-contain"
+                onClick={(e) => e.stopPropagation()}
+              />
+
+              {salon.gallery.length > 1 && (
+                  <>
+                      <button
+                        className="absolute left-2 text-white/50 hover:text-white p-4"
+                        onClick={(e) => { e.stopPropagation(); setLightboxIndex(prev => (prev! > 0 ? prev! - 1 : salon.gallery.length - 1)); }}
+                      >
+                          <ChevronLeft size={40}/>
+                      </button>
+                      <button
+                        className="absolute right-2 text-white/50 hover:text-white p-4"
+                        onClick={(e) => { e.stopPropagation(); setLightboxIndex(prev => (prev! < salon.gallery.length - 1 ? prev! + 1 : 0)); }}
+                      >
+                          <ChevronRight size={40}/>
+                      </button>
+                  </>
+              )}
+          </div>
+      )}
     </div>
   );
 }
