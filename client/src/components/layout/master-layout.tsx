@@ -24,7 +24,7 @@ export function MasterLayout() {
             className={`flex flex-col items-center gap-1 w-16 active:scale-95 transition-all ${isActive('/dashboard') ? 'text-[#007AFF]' : 'text-[#8E8E93]'}`}
           >
             <LayoutDashboard size={26} strokeWidth={isActive('/dashboard') ? 2.5 : 2} />
-            <span className="text-[10px] font-bold">Главная</span>
+            <span className="text-[10px] font-bold">Записи</span>
           </button>
 
           <button
