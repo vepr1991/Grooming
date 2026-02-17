@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
-import { format, addMonths, subMonths, isToday, isSameDay, addMinutes } from "date-fns";
+import { format, addMonths, subMonths, isToday, isSameDay } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
   ChevronDown,
-  Phone,
   ChevronLeft,
   ChevronRight,
   MessageSquare,
-  PawPrint,
   RefreshCcw,
   Scissors,
   Plus,
@@ -15,13 +13,14 @@ import {
   Clock,
   Calendar as CalendarIcon,
   Copy,
-  Loader2
+  Loader2,
+  PawPrint
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
 import { PhoneInput } from "@/components/ui/phone-input";
-import { api } from "@/lib/api"; // 👈 ИМПОРТ
+import { api } from "@/lib/api";
 
 type Appointment = {
   id: string;
@@ -41,6 +40,13 @@ type Service = {
   title: string;
   price: number;
   duration_minutes: number;
+};
+
+// 👇 УТИЛИТА: Игнорируем часовой пояс сервера (+00) и считаем время локальным
+const parseDate = (dateStr: string) => {
+  if (!dateStr) return new Date();
+  // Берем только первые 19 символов (YYYY-MM-DDTHH:mm:ss), отбрасывая Z или +00
+  return new Date(dateStr.substring(0, 19));
 };
 
 export function MasterDashboardPage() {
@@ -65,7 +71,6 @@ export function MasterDashboardPage() {
   const fetchAppointments = async () => {
     if (!salonId) return;
     setLoading(true);
-    // Чтение через Supabase (безопасно и быстро)
     const { data, error } = await supabase.from('appointments')
       .select(`*, services (title, price, duration_minutes)`)
       .eq('salon_id', salonId);
@@ -79,7 +84,7 @@ export function MasterDashboardPage() {
     const { data } = await supabase.from('services')
       .select('id, title, price, duration_minutes')
       .eq('salon_id', salonId)
-      .eq('is_active', true); // Фильтр активных услуг
+      .eq('is_active', true);
     if (data) setServices(data);
   };
 
@@ -117,7 +122,6 @@ export function MasterDashboardPage() {
         }
       };
 
-      // 👇 ИСПОЛЬЗУЕМ НОВЫЙ API КЛИЕНТ
       await api.createBooking(payload);
 
       toast.success("Клиент успешно записан!");
@@ -127,7 +131,6 @@ export function MasterDashboardPage() {
 
     } catch (e: any) {
       console.error(e);
-      // Если ошибка 409 - занято
       if (e.message && e.message.includes("409")) {
           toast.error("Это время уже занято! ⚠️");
       } else {
@@ -141,9 +144,7 @@ export function MasterDashboardPage() {
   const updateStatus = async (id: string, newStatus: Appointment['status']) => {
     const toastId = toast.loading("Обновление...");
     try {
-        // 👇 ИСПОЛЬЗУЕМ НОВЫЙ API КЛИЕНТ
         await api.updateAppointmentStatus(id, newStatus);
-
         toast.success("Статус обновлен", { id: toastId });
         fetchAppointments();
     } catch (e) {
@@ -154,20 +155,22 @@ export function MasterDashboardPage() {
   const filteredApps = appointments
     .filter(app => filter === 'pending' ? app.status === 'pending' : ['confirmed', 'completed', 'canceled'].includes(app.status))
     .sort((a, b) => {
-      const tA = new Date(a.start_time).getTime();
-      const tB = new Date(b.start_time).getTime();
+      // ИСПОЛЬЗУЕМ parseDate ДЛЯ СОРТИРОВКИ
+      const tA = parseDate(a.start_time).getTime();
+      const tB = parseDate(b.start_time).getTime();
       return filter === 'pending' ? tA - tB : tB - tA;
     });
 
   const calendarPendingApps = appointments.filter(app =>
-    isSameDay(new Date(app.start_time), selectedDate) && app.status === 'pending'
+    // ИСПОЛЬЗУЕМ parseDate ДЛЯ КАЛЕНДАРЯ
+    isSameDay(parseDate(app.start_time), selectedDate) && app.status === 'pending'
   );
 
   const renderCalendar = () => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
-    const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDay = new Date(year, month, 1).getDay();
     const offset = firstDay === 0 ? 6 : firstDay - 1;
 
     const days: React.ReactNode[] = [];
@@ -177,7 +180,9 @@ export function MasterDashboardPage() {
     for (let d = 1; d <= daysInMonth; d++) {
       const dateObj = new Date(year, month, d);
       const isSel = isSameDay(dateObj, selectedDate);
-      const hasPending = appointments.some(a => isSameDay(new Date(a.start_time), dateObj) && a.status === 'pending');
+
+      // ИСПОЛЬЗУЕМ parseDate ДЛЯ ТОЧЕК НА КАЛЕНДАРЕ
+      const hasPending = appointments.some(a => isSameDay(parseDate(a.start_time), dateObj) && a.status === 'pending');
       const isCurrToday = isToday(dateObj);
 
       days.push(
@@ -275,22 +280,15 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
   let tgUsername = null;
   try {
     if (app.client_tg_user) {
-      const userObj = typeof app.client_tg_user === 'string'
-        ? JSON.parse(app.client_tg_user)
-        : app.client_tg_user;
+      const userObj = typeof app.client_tg_user === 'string' ? JSON.parse(app.client_tg_user) : app.client_tg_user;
       tgUsername = userObj?.username;
     }
   } catch (e) {
     console.error("Failed to parse tg user", e);
   }
 
-  // Очистка номера
   const cleanPhone = app.client_phone.replace(/[^0-9+]/g, '');
-
-  const chatLink = tgUsername
-    ? `https://t.me/${tgUsername}`
-    : `https://wa.me/${cleanPhone}`;
-
+  const chatLink = tgUsername ? `https://t.me/${tgUsername}` : `https://wa.me/${cleanPhone}`;
   const isTelegram = !!tgUsername;
 
   const statusConfig: any = {
@@ -300,7 +298,9 @@ function AppointmentCard({ app, onStatusUpdate }: { app: Appointment, onStatusUp
     canceled: { bg: '#FFEBEE', text: '#C62828', label: 'ОТМЕНА' },
   };
   const config = statusConfig[app.status] || statusConfig.pending;
-  const sTime = new Date(app.start_time);
+
+  // 👇 ИСПОЛЬЗУЕМ parseDate ДЛЯ ОТОБРАЖЕНИЯ
+  const sTime = parseDate(app.start_time);
   const sInfo = Array.isArray(app.services) ? app.services[0] : app.services;
 
   return (
