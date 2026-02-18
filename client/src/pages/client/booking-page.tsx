@@ -10,7 +10,10 @@ import {
   CheckCircle2,
   Loader2,
   Image as ImageIcon,
-  X
+  X,
+  Check,
+  Calendar,
+  Wallet
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,6 +41,7 @@ type Service = {
   price: number;
   duration_minutes: number;
   image_url: string;
+  description?: string;
 };
 
 export function ClientBookingPage() {
@@ -50,7 +54,7 @@ export function ClientBookingPage() {
   const [slotsLoading, setSlotsLoading] = useState(false);
 
   // Booking State
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [selectedServices, setSelectedServices] = useState<Service[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -63,7 +67,6 @@ export function ClientBookingPage() {
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  // 1. Загрузка данных салона
   useEffect(() => {
     async function loadInitialData() {
       if (!salonId) return;
@@ -105,7 +108,6 @@ export function ClientBookingPage() {
     loadInitialData();
   }, [salonId]);
 
-  // 2. Получаем занятые слоты
   useEffect(() => {
     async function fetchBusySlots() {
       if (!salonId || !selectedDate) return;
@@ -120,7 +122,7 @@ export function ClientBookingPage() {
         .from('appointments')
         .select('start_time, end_time')
         .eq('salon_id', salonId)
-        .neq('status', 'canceled') // Это включает 'blocked'
+        .neq('status', 'canceled')
         .lte('start_time', end.toISOString())
         .gte('end_time', start.toISOString());
 
@@ -130,10 +132,7 @@ export function ClientBookingPage() {
     fetchBusySlots();
   }, [selectedDate, salonId]);
 
-  // 👇 ФУНКЦИЯ ПАРСИНГА ДАТЫ БЕЗ УЧЕТА ЧАСОВЫХ ПОЯСОВ (FIX)
   const parseDbDate = (isoStr: string) => {
-      // Обрезаем Z и смещение, чтобы new Date считал это локальным временем
-      // Пример: "2026-02-18T12:20:00+00:00" -> "2026-02-18T12:20:00"
       const clean = isoStr.split('+')[0].split('Z')[0];
       return new Date(clean);
   };
@@ -150,33 +149,49 @@ export function ClientBookingPage() {
     let current = parse(dayConfig.hours.start, 'HH:mm', selectedDate);
     const endWorkDay = parse(dayConfig.hours.end, 'HH:mm', selectedDate);
 
+    const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0);
+
     while (isBefore(current, endWorkDay)) {
       const timeStr = format(current, 'HH:mm');
-      const duration = selectedService?.duration_minutes || 30;
-
       const slotStart = new Date(current);
-      const slotEnd = addMinutes(slotStart, duration);
+      const slotEnd = addMinutes(slotStart, totalDuration);
 
       const isBusy = existingAppointments.some(app => {
-        // Используем наш безопасный парсер
         const appStart = parseDbDate(app.start_time);
         const appEnd = parseDbDate(app.end_time);
-
-        // Проверка пересечения интервалов:
-        // (StartA < EndB) and (EndA > StartB)
         return slotStart < appEnd && slotEnd > appStart;
       });
 
+      const isTooLate = isBefore(endWorkDay, slotEnd);
       const isPast = isSameDay(selectedDate, new Date()) && isBefore(current, new Date());
 
-      if (!isBusy && !isPast) slots.push(timeStr);
+      if (!isBusy && !isPast && !isTooLate) slots.push(timeStr);
       current = addMinutes(current, salon.slot_step || 30);
     }
     return slots;
   };
 
+  // 👇 ИСПРАВЛЕННАЯ ЛОГИКА С ЛИМИТОМ В 3 УСЛУГИ
+  const toggleService = (service: Service) => {
+      const isSelected = selectedServices.some(s => s.id === service.id);
+
+      if (isSelected) {
+          // Если уже выбрана - убираем
+          setSelectedServices(prev => prev.filter(s => s.id !== service.id));
+      } else {
+          // Если пытаемся добавить новую, проверяем лимит
+          if (selectedServices.length >= 3) {
+              toast.error("Максимум 3 услуги за одну запись", {
+                  description: "Для большего количества создайте еще одну запись."
+              });
+              return;
+          }
+          setSelectedServices(prev => [...prev, service]);
+      }
+  };
+
   const handleFinish = async () => {
-    if (!selectedService || !selectedTime || !salonId) return;
+    if (selectedServices.length === 0 || !selectedTime || !salonId) return;
 
     setLoading(true);
 
@@ -186,7 +201,7 @@ export function ClientBookingPage() {
     try {
       const payload = {
         salonId,
-        service: selectedService,
+        services: selectedServices,
         date: format(selectedDate, 'yyyy-MM-dd'),
         time: selectedTime,
         client: {
@@ -210,12 +225,15 @@ export function ClientBookingPage() {
     }
   };
 
+  const totalAmount = selectedServices.reduce((sum, s) => sum + s.price, 0);
+  const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0);
+
   if (loading && step !== 'success') {
     return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader2 className="animate-spin text-[#007AFF]" size={32}/></div>;
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#F2F2F7] max-w-md mx-auto overflow-x-hidden font-sans">
+    <div className="flex flex-col min-h-screen bg-[#F2F2F7] max-w-md mx-auto overflow-x-hidden font-sans pb-24">
       {step !== 'success' && (
         <header className="bg-white/80 backdrop-blur-md sticky top-0 z-20 px-5 pt-12 pb-4 border-b border-slate-100 flex items-center gap-4">
           {step !== 'showcase' && (
@@ -224,7 +242,7 @@ export function ClientBookingPage() {
             </button>
           )}
           <h1 className="text-[17px] font-bold flex-1 text-center pr-8">
-            {step === 'showcase' ? 'Выбор услуги' : step === 'datetime' ? 'Дата и время' : 'Ваши данные'}
+            {step === 'showcase' ? 'Услуги' : step === 'datetime' ? 'Время' : 'Детали'}
           </h1>
         </header>
       )}
@@ -242,12 +260,10 @@ export function ClientBookingPage() {
               </div>
             </div>
 
-            {/* ОПИСАНИЕ САЛОНА */}
             <div className="p-5 pb-0 space-y-3">
                  {salon?.description && <p className="text-[14px] text-[#3A3A3C] leading-relaxed bg-white p-4 rounded-[20px] shadow-sm">{salon.description}</p>}
             </div>
 
-            {/* ГАЛЕРЕЯ (ПОРТФОЛИО) */}
             {salon?.gallery && salon.gallery.length > 0 && (
                <div className="p-5 pb-0 space-y-3">
                    <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 flex items-center gap-2">
@@ -256,8 +272,8 @@ export function ClientBookingPage() {
                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-5 px-5 snap-x">
                        {salon.gallery.map((img, i) => (
                            <div key={i} className="snap-start shrink-0 first:pl-0">
-                               <img
-                                   src={img}
+                               <img 
+                                   src={img} 
                                    className="w-32 h-32 rounded-[20px] object-cover shadow-sm cursor-pointer active:scale-95 transition-transform border border-slate-100"
                                    onClick={() => setLightboxIndex(i)}
                                />
@@ -267,25 +283,42 @@ export function ClientBookingPage() {
                </div>
             )}
 
-            <div className="p-5 space-y-4">
-              <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Наши услуги</h3>
-              {services.map(s => (
-                <div key={s.id} className="bg-white rounded-[24px] p-4 shadow-sm border border-slate-100 flex gap-4 active:scale-[0.98] transition-all cursor-pointer" onClick={() => { setSelectedService(s); setStep('datetime'); }}>
-                  <div className="w-20 h-20 rounded-[18px] bg-slate-100 overflow-hidden shrink-0">
-                    <img src={s.image_url || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?q=80&w=200"} className="w-full h-full object-cover" alt={s.title} />
-                  </div>
-                  <div className="flex-1 flex flex-col justify-between py-0.5">
-                    <div>
-                      <h4 className="text-[17px] font-bold text-black leading-tight tracking-tight">{s.title}</h4>
-                      <p className="text-[13px] text-[#8E8E93] mt-1 font-medium">{s.duration_minutes} мин</p>
+            <div className="p-5 space-y-4 pb-28">
+              <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Выберите услуги (макс. 3)</h3>
+              {services.map(s => {
+                const isSelected = selectedServices.some(sel => sel.id === s.id);
+                // Опционально: делаем неактивными остальные услуги, если выбрано 3
+                // const isMaxReached = selectedServices.length >= 3 && !isSelected;
+                
+                return (
+                  <div 
+                    key={s.id} 
+                    className={`bg-white rounded-[24px] p-4 shadow-sm border transition-all cursor-pointer active:scale-[0.98] ${isSelected ? 'border-[#007AFF] ring-1 ring-[#007AFF]' : 'border-slate-100'}`}
+                    onClick={() => toggleService(s)}
+                  >
+                    <div className="flex gap-4">
+                        <div className="w-20 h-20 rounded-[18px] bg-slate-100 overflow-hidden shrink-0">
+                            <img src={s.image_url || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?q=80&w=200"} className="w-full h-full object-cover" alt={s.title} />
+                        </div>
+                        <div className="flex-1 flex flex-col justify-between py-0.5">
+                            <div>
+                                <h4 className="text-[17px] font-bold text-black leading-tight">{s.title}</h4>
+                                <p className="text-[13px] text-[#8E8E93] mt-1 font-medium">{s.duration_minutes} мин</p>
+                                {s.description && (
+                                    <p className="text-[12px] text-[#3A3A3C] mt-2 leading-tight opacity-80 line-clamp-2">{s.description}</p>
+                                )}
+                            </div>
+                            <div className="flex justify-between items-center mt-2">
+                                <span className="text-[18px] font-black text-[#007AFF]">{s.price} ₸</span>
+                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-[#007AFF] border-[#007AFF]' : 'border-slate-200'}`}>
+                                    {isSelected && <Check size={14} className="text-white"/>}
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div className="flex justify-between items-center mt-2">
-                      <span className="text-[18px] font-black text-[#007AFF]">{s.price} ₸</span>
-                      <div className="bg-[#007AFF] text-white px-4 py-1.5 rounded-full text-[13px] font-bold">Выбрать</div>
-                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -311,7 +344,7 @@ export function ClientBookingPage() {
             </section>
 
             <section>
-              <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 mb-3">Доступное время</h3>
+              <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 mb-3">Доступное время ({totalDuration} мин)</h3>
               <div className="relative min-h-[100px]">
                 {slotsLoading ? (
                   <div className="flex justify-center py-10"><Loader2 className="animate-spin text-slate-300" /></div>
@@ -331,7 +364,7 @@ export function ClientBookingPage() {
             </section>
 
             {selectedTime && (
-              <button onClick={() => setStep('details')} className="w-full bg-[#007AFF] text-white py-4 rounded-[20px] font-bold text-[17px] shadow-xl shadow-blue-100 active:scale-95 transition-all">
+              <button onClick={() => setStep('details')} className="w-full bg-[#007AFF] text-white py-4 rounded-[20px] font-bold text-[17px] shadow-xl shadow-blue-100 active:scale-95 transition-all mt-4">
                 Продолжить
               </button>
             )}
@@ -340,17 +373,43 @@ export function ClientBookingPage() {
 
         {step === 'details' && (
           <div className="p-5 space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-            <div className="bg-white rounded-[24px] p-5 border border-slate-100 space-y-4 shadow-sm">
-              <div className="flex items-center gap-4">
-                <div className="bg-[#007AFF]/10 p-3 rounded-[16px] text-[#007AFF]"><Clock size={24} /></div>
-                <div>
-                  <p className="text-[13px] text-[#8E8E93] font-bold uppercase tracking-tight">Ваша запись</p>
-                  <p className="text-[16px] font-black text-black">{selectedService?.title}</p>
-                  <p className="text-[14px] font-bold text-[#007AFF] mt-0.5">
-                    {format(selectedDate, 'd MMMM', { locale: ru })} в {selectedTime}
-                  </p>
+            <div className="bg-white rounded-[24px] p-5 border border-slate-100 space-y-4 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-1.5 bg-[repeating-linear-gradient(45deg,#F2F2F7,#F2F2F7_10px,#fff_10px,#fff_20px)] opacity-50"></div>
+
+                <div className="flex justify-between items-start pt-2">
+                    <div>
+                        <p className="text-[12px] text-[#8E8E93] font-bold uppercase tracking-wide">Дата и время</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <Calendar size={18} className="text-[#007AFF]" />
+                            <span className="text-[17px] font-bold text-black">{format(selectedDate, 'd MMMM', { locale: ru })}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                            <Clock size={18} className="text-[#007AFF]" />
+                            <span className="text-[17px] font-bold text-black">{selectedTime}</span>
+                        </div>
+                    </div>
                 </div>
-              </div>
+
+                <div className="bg-[#F9F9F9] rounded-xl p-3 border border-slate-50">
+                    <p className="text-[11px] text-[#8E8E93] font-bold uppercase tracking-wide mb-2 pl-1">Выбранные услуги</p>
+                    
+                    <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
+                        {selectedServices.map(s => (
+                            <div key={s.id} className="flex justify-between items-center text-[14px]">
+                                <span className="font-medium text-slate-700 leading-tight pr-2">{s.title}</span>
+                                <span className="font-bold text-black whitespace-nowrap">{s.price} ₸</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200">
+                    <div className="flex items-center gap-2 text-[#8E8E93]">
+                        <Wallet size={18} />
+                        <span className="text-[15px] font-medium">Итого к оплате</span>
+                    </div>
+                    <span className="text-[22px] font-black text-[#007AFF]">{totalAmount} ₸</span>
+                </div>
             </div>
 
             <div className="space-y-4">
@@ -390,7 +449,7 @@ export function ClientBookingPage() {
                 : 'bg-slate-200 text-[#8E8E93] cursor-not-allowed shadow-none'
               }`}
             >
-              Записаться
+              Записаться ({totalAmount} ₸)
             </button>
           </div>
         )}
@@ -407,7 +466,7 @@ export function ClientBookingPage() {
             </p>
 
             <div className="w-full space-y-3">
-              <button onClick={() => { setStep('showcase'); setSelectedService(null); setSelectedTime(null); }} className="w-full py-4 text-[#007AFF] font-bold text-[17px] active:opacity-50">
+              <button onClick={() => { setStep('showcase'); setSelectedServices([]); setSelectedTime(null); }} className="w-full py-4 text-[#007AFF] font-bold text-[17px] active:opacity-50">
                 Вернуться назад
               </button>
             </div>
@@ -415,30 +474,32 @@ export function ClientBookingPage() {
         )}
       </div>
 
-      {/* LIGHTBOX (ПРОСМОТР ФОТО) */}
+      {/* FLOAT BOTTOM BAR */}
+      {step === 'showcase' && selectedServices.length > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-100 z-30 animate-in slide-in-from-bottom duration-300">
+              <button 
+                onClick={() => setStep('datetime')}
+                className="w-full bg-[#007AFF] text-white py-4 rounded-[20px] font-bold text-[17px] shadow-xl shadow-blue-200 active:scale-95 transition-all flex justify-between px-6"
+              >
+                  <span>Продолжить ({selectedServices.length})</span>
+                  <span>{totalAmount} ₸</span>
+              </button>
+          </div>
+      )}
+
+      {/* LIGHTBOX */}
       {lightboxIndex !== null && salon?.gallery && (
           <div className="fixed inset-0 z-50 bg-black flex items-center justify-center animate-in fade-in duration-200" onClick={() => setLightboxIndex(null)}>
               <button className="absolute top-4 right-4 text-white/80 p-2"><X size={32}/></button>
-              <img
-                src={salon.gallery[lightboxIndex]}
+              <img 
+                src={salon.gallery[lightboxIndex]} 
                 className="max-w-full max-h-full object-contain"
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()} 
               />
-
               {salon.gallery.length > 1 && (
                   <>
-                      <button
-                        className="absolute left-2 text-white/50 hover:text-white p-4"
-                        onClick={(e) => { e.stopPropagation(); setLightboxIndex(prev => (prev! > 0 ? prev! - 1 : salon.gallery.length - 1)); }}
-                      >
-                          <ChevronLeft size={40}/>
-                      </button>
-                      <button
-                        className="absolute right-2 text-white/50 hover:text-white p-4"
-                        onClick={(e) => { e.stopPropagation(); setLightboxIndex(prev => (prev! < salon.gallery.length - 1 ? prev! + 1 : 0)); }}
-                      >
-                          <ChevronRight size={40}/>
-                      </button>
+                      <button className="absolute left-2 text-white/50 hover:text-white p-4" onClick={(e) => { e.stopPropagation(); setLightboxIndex(prev => (prev! > 0 ? prev! - 1 : salon.gallery.length - 1)); }}><ChevronLeft size={40}/></button>
+                      <button className="absolute right-2 text-white/50 hover:text-white p-4" onClick={(e) => { e.stopPropagation(); setLightboxIndex(prev => (prev! < salon.gallery.length - 1 ? prev! + 1 : 0)); }}><ChevronRight size={40}/></button>
                   </>
               )}
           </div>
