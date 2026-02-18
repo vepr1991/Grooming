@@ -171,10 +171,21 @@ export function ClientBookingPage() {
     return slots;
   };
 
+  // 👇 ИСПРАВЛЕННАЯ ЛОГИКА С ЛИМИТОМ В 3 УСЛУГИ
   const toggleService = (service: Service) => {
-      if (selectedServices.find(s => s.id === service.id)) {
+      const isSelected = selectedServices.some(s => s.id === service.id);
+
+      if (isSelected) {
+          // Если уже выбрана - убираем
           setSelectedServices(prev => prev.filter(s => s.id !== service.id));
       } else {
+          // Если пытаемся добавить новую, проверяем лимит
+          if (selectedServices.length >= 3) {
+              toast.error("Максимум 3 услуги за одну запись", {
+                  description: "Для большего количества создайте еще одну запись."
+              });
+              return;
+          }
           setSelectedServices(prev => [...prev, service]);
       }
   };
@@ -261,8 +272,8 @@ export function ClientBookingPage() {
                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-5 px-5 snap-x">
                        {salon.gallery.map((img, i) => (
                            <div key={i} className="snap-start shrink-0 first:pl-0">
-                               <img
-                                   src={img}
+                               <img 
+                                   src={img} 
                                    className="w-32 h-32 rounded-[20px] object-cover shadow-sm cursor-pointer active:scale-95 transition-transform border border-slate-100"
                                    onClick={() => setLightboxIndex(i)}
                                />
@@ -273,12 +284,15 @@ export function ClientBookingPage() {
             )}
 
             <div className="p-5 space-y-4 pb-28">
-              <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Выберите услуги</h3>
+              <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Выберите услуги (макс. 3)</h3>
               {services.map(s => {
                 const isSelected = selectedServices.some(sel => sel.id === s.id);
+                // Опционально: делаем неактивными остальные услуги, если выбрано 3
+                // const isMaxReached = selectedServices.length >= 3 && !isSelected;
+                
                 return (
-                  <div
-                    key={s.id}
+                  <div 
+                    key={s.id} 
                     className={`bg-white rounded-[24px] p-4 shadow-sm border transition-all cursor-pointer active:scale-[0.98] ${isSelected ? 'border-[#007AFF] ring-1 ring-[#007AFF]' : 'border-slate-100'}`}
                     onClick={() => toggleService(s)}
                   >
@@ -357,11 +371,9 @@ export function ClientBookingPage() {
           </div>
         )}
 
-        {/* 👇 ОБНОВЛЕННЫЙ ШАГ: DETAILS (КРАСИВЫЙ ЧЕК) */}
         {step === 'details' && (
           <div className="p-5 space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
             <div className="bg-white rounded-[24px] p-5 border border-slate-100 space-y-4 shadow-sm relative overflow-hidden">
-                {/* Декоративный элемент сверху "чека" */}
                 <div className="absolute top-0 left-0 right-0 h-1.5 bg-[repeating-linear-gradient(45deg,#F2F2F7,#F2F2F7_10px,#fff_10px,#fff_20px)] opacity-50"></div>
 
                 <div className="flex justify-between items-start pt-2">
@@ -380,8 +392,7 @@ export function ClientBookingPage() {
 
                 <div className="bg-[#F9F9F9] rounded-xl p-3 border border-slate-50">
                     <p className="text-[11px] text-[#8E8E93] font-bold uppercase tracking-wide mb-2 pl-1">Выбранные услуги</p>
-
-                    {/* Список с прокруткой, если услуг много */}
+                    
                     <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
                         {selectedServices.map(s => (
                             <div key={s.id} className="flex justify-between items-center text-[14px]">
@@ -463,10 +474,10 @@ export function ClientBookingPage() {
         )}
       </div>
 
-      {/* 👇 FLOAT BOTTOM BAR (ТОЛЬКО НА ШАГЕ SHOWCASE) */}
+      {/* FLOAT BOTTOM BAR */}
       {step === 'showcase' && selectedServices.length > 0 && (
           <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-100 z-30 animate-in slide-in-from-bottom duration-300">
-              <button
+              <button 
                 onClick={() => setStep('datetime')}
                 className="w-full bg-[#007AFF] text-white py-4 rounded-[20px] font-bold text-[17px] shadow-xl shadow-blue-200 active:scale-95 transition-all flex justify-between px-6"
               >
@@ -480,10 +491,10 @@ export function ClientBookingPage() {
       {lightboxIndex !== null && salon?.gallery && (
           <div className="fixed inset-0 z-50 bg-black flex items-center justify-center animate-in fade-in duration-200" onClick={() => setLightboxIndex(null)}>
               <button className="absolute top-4 right-4 text-white/80 p-2"><X size={32}/></button>
-              <img
-                src={salon.gallery[lightboxIndex]}
+              <img 
+                src={salon.gallery[lightboxIndex]} 
                 className="max-w-full max-h-full object-contain"
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()} 
               />
               {salon.gallery.length > 1 && (
                   <>
