@@ -7,7 +7,7 @@ type AuthContextType = {
   isMaster: boolean;
   salonId: string | null;
   isApproved: boolean;
-  user: any; // Тут можно добавить тип TelegramUser
+  user: any;
   isLoading: boolean;
   checkUser: () => Promise<void>;
 };
@@ -16,11 +16,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const BACKEND_URL = "https://grooming-tma.onrender.com";
 
+// Явно определяем тип статуса
+type AuthStatus = 'loading' | 'approved' | 'pending_approval' | 'guest';
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [status, setStatus] = useState<'loading' | 'approved' | 'pending_approval' | 'guest'>('loading');
+  // Используем явный тип
+  const [status, setStatus] = useState<AuthStatus>('loading');
   const [salonId, setSalonId] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
 
@@ -35,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(tg.initDataUnsafe?.user);
     }
     checkUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function checkUser() {
@@ -84,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Заглушки рендерим прямо здесь, чтобы не засорять App.tsx
+  // РЕНДЕР: 1. ЗАГРУЗКА
   if (status === 'loading') {
     return (
       <div className="flex h-screen items-center justify-center bg-[#F2F2F7]">
@@ -96,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   }
 
+  // РЕНДЕР: 2. ОЖИДАНИЕ ПРОВЕРКИ
   if (status === 'pending_approval') {
       return (
         <div className="flex h-screen flex-col items-center justify-center bg-white p-6 text-center animate-in fade-in duration-500">
@@ -116,13 +122,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
   }
 
+  // РЕНДЕР: 3. ПРИЛОЖЕНИЕ (Status точно не 'loading' и не 'pending_approval')
   return (
     <AuthContext.Provider value={{
         isMaster: status === 'approved',
         isApproved: status === 'approved',
         salonId,
         user,
-        isLoading: status === 'loading',
+        isLoading: false, // 👈 ИСПРАВЛЕНО: тут мы точно знаем, что не loading
         checkUser
     }}>
       {children}
@@ -130,7 +137,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// Хук для удобного использования
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) throw new Error("useAuth must be used within an AuthProvider");
