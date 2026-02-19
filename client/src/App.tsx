@@ -1,19 +1,30 @@
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
-import { AuthCheck } from "@/components/auth-check";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"; // 👈 НОВОЕ
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { Scissors, User } from "lucide-react";
 
+import { AuthProvider } from "@/providers/auth-provider"; // 👈 НОВОЕ (вместо AuthCheck)
 import { MasterLayout } from "@/components/layout/master-layout";
 import { ClientLayout } from "@/components/layout/client-layout";
 import { MasterDashboardPage } from "@/pages/master/dashboard-page";
 import { MasterServicesPage } from "@/pages/master/services-page";
 import { MasterProfilePage } from "@/pages/master/profile-page";
 import { MasterRegisterPage } from "@/pages/master/register-page";
-import { MasterClientsPage } from "@/pages/master/clients-page"; // 👈 Импорт
+import { MasterClientsPage } from "@/pages/master/clients-page";
 import { ClientBookingPage } from "@/pages/client/booking-page";
 
-// Страница выбора роли
+// Создаем клиент для React Query
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false, // Не перезапрашивать при смене вкладки
+      retry: 1,
+      staleTime: 1000 * 60 * 5, // Кэшировать данные на 5 минут
+    },
+  },
+});
+
 function SelectRolePage() {
   const navigate = useNavigate();
 
@@ -22,8 +33,7 @@ function SelectRolePage() {
     if (lastSalon) {
       navigate(`/client/${lastSalon}`);
     } else {
-      toast.info("Чтобы записаться, перейдите по ссылке, которую вам отправил мастер.", {
-        duration: 4000,
+      toast.info("Чтобы записаться, перейдите по ссылке от мастера", {
         position: 'bottom-center'
       });
     }
@@ -71,38 +81,33 @@ function SelectRolePage() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <Toaster position="top-center" richColors />
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Toaster position="top-center" richColors />
 
-      <AuthCheck>
-        <Routes>
-          {/* Главная страница - Выбор роли */}
-          <Route path="/" element={<SelectRolePage />} />
+        <AuthProvider>
+          <Routes>
+            <Route path="/" element={<SelectRolePage />} />
+            <Route path="/select-role" element={<SelectRolePage />} />
+            <Route path="/master/register" element={<MasterRegisterPage />} />
 
-          <Route path="/select-role" element={<SelectRolePage />} />
+            <Route path="/master" element={<MasterLayout />}>
+              <Route index element={<MasterDashboardPage />} />
+              <Route path="dashboard" element={<MasterDashboardPage />} />
+              <Route path="services" element={<MasterServicesPage />} />
+              <Route path="profile" element={<MasterProfilePage />} />
+              <Route path="clients" element={<MasterClientsPage />} />
+            </Route>
 
-          {/* Регистрация мастера */}
-          <Route path="/master/register" element={<MasterRegisterPage />} />
+            <Route path="/client/:salonId" element={<ClientLayout />}>
+              <Route index element={<ClientBookingPage />} />
+            </Route>
 
-          {/* Панель мастера */}
-          <Route path="/master" element={<MasterLayout />}>
-            <Route index element={<MasterDashboardPage />} />
-            <Route path="dashboard" element={<MasterDashboardPage />} />
-            <Route path="services" element={<MasterServicesPage />} />
-            <Route path="profile" element={<MasterProfilePage />} />
-            <Route path="clients" element={<MasterClientsPage />} /> {/* 👈 Новый маршрут */}
-          </Route>
-
-          {/* Запись клиента */}
-          <Route path="/client/:salonId" element={<ClientLayout />}>
-            <Route index element={<ClientBookingPage />} />
-          </Route>
-
-          {/* 404 Страница */}
-          <Route path="*" element={<div className="p-10 text-center text-[#8E8E93]">404: Страница не найдена</div>} />
-        </Routes>
-      </AuthCheck>
-    </BrowserRouter>
+            <Route path="*" element={<div className="p-10 text-center text-[#8E8E93]">404: Страница не найдена</div>} />
+          </Routes>
+        </AuthProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
   );
 }
 
