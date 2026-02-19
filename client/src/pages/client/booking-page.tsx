@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { format, addDays, isSameDay, isBefore, parse, addMinutes, startOfToday } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -9,7 +9,7 @@ import {
 import { toast } from "sonner";
 import { PhoneInput } from "@/components/ui/phone-input";
 
-// 👇 Импортируем наши новые хуки
+// Импортируем наши хуки
 import { useSalon, useServices, useBusySlots, useCreateBooking, type Service } from "@/hooks/use-booking";
 
 // Типы состояний
@@ -18,7 +18,7 @@ type Step = 'showcase' | 'datetime' | 'details' | 'success';
 export function ClientBookingPage() {
   const { salonId } = useParams();
 
-  // 1. ЗАГРУЗКА ДАННЫХ (через хуки)
+  // 1. ЗАГРУЗКА ДАННЫХ
   const { data: salon, isLoading: isSalonLoading } = useSalon(salonId);
   const { data: services = [], isLoading: isServicesLoading } = useServices(salonId);
   const createBookingMutation = useCreateBooking();
@@ -32,19 +32,51 @@ export function ClientBookingPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
 
-  // 4. ДАННЫЕ ФОРМЫ
+  // 4. ДАННЫЕ ФОРМЫ (С ПАМЯТЬЮ)
   // @ts-ignore
   const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-  const [formData, setFormData] = useState({
-    name: tgUser?.first_name || '',
-    phone: '',
-    petName: '',
-    petBreed: '',
-    agreed: false
+
+  const [formData, setFormData] = useState(() => {
+    // 🧠 Пытаемся достать данные из прошлого визита
+    try {
+        const saved = localStorage.getItem('client_info');
+        const parsed = saved ? JSON.parse(saved) : {};
+        return {
+          name: tgUser?.first_name || parsed.name || '',
+          phone: parsed.phone || '',
+          petName: parsed.petName || '',
+          petBreed: parsed.petBreed || '',
+          agreed: false
+        };
+    } catch {
+        return { name: tgUser?.first_name || '', phone: '', petName: '', petBreed: '', agreed: false };
+    }
   });
 
   // 5. ЗАГРУЗКА ЗАНЯТЫХ СЛОТОВ
   const { data: busySlots = [], isLoading: isSlotsLoading } = useBusySlots(salonId, selectedDate);
+
+  // === ЭФФЕКТ: КНОПКА НАЗАД В TELEGRAM ===
+  useEffect(() => {
+      // @ts-ignore
+      const tg = window.Telegram?.WebApp;
+      if (!tg) return;
+
+      if (step !== 'showcase' && step !== 'success') {
+          tg.BackButton.show();
+          tg.BackButton.onClick(() => {
+              if (step === 'details') setStep('datetime');
+              else if (step === 'datetime') setStep('showcase');
+          });
+      } else {
+          tg.BackButton.hide();
+      }
+
+      return () => {
+          tg.BackButton.offClick();
+          tg.BackButton.hide();
+      };
+  }, [step]);
 
   // === ЛОГИКА: Расчет свободных слотов ===
   const freeSlots = useMemo(() => {
@@ -60,7 +92,6 @@ export function ClientBookingPage() {
     const endWorkDay = parse(dayConfig.hours.end, 'HH:mm', selectedDate);
     const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0);
 
-    // Вспомогательная функция парсинга времени из БД
     const parseDbDate = (isoStr: string) => new Date(isoStr.split('+')[0].split('Z')[0]);
 
     while (isBefore(current, endWorkDay)) {
@@ -68,7 +99,6 @@ export function ClientBookingPage() {
       const slotStart = new Date(current);
       const slotEnd = addMinutes(slotStart, totalDuration);
 
-      // Проверка на пересечение с занятыми слотами
       const isBusy = busySlots.some((app: any) => {
         const appStart = parseDbDate(app.start_time);
         const appEnd = parseDbDate(app.end_time);
@@ -79,14 +109,11 @@ export function ClientBookingPage() {
       const isPast = isSameDay(selectedDate, new Date()) && isBefore(current, new Date());
 
       if (!isBusy && !isPast && !isTooLate) slots.push(timeStr);
-
       current = addMinutes(current, salon.slot_step || 30);
     }
     return slots;
   }, [salon, selectedDate, selectedServices, busySlots]);
 
-
-  // === ХЕНДЛЕРЫ ===
   const toggleService = (service: Service) => {
       const isSelected = selectedServices.some(s => s.id === service.id);
       if (isSelected) {
@@ -117,6 +144,14 @@ export function ClientBookingPage() {
         pet: { name: formData.petName, petBreed: formData.petBreed }
       });
 
+      // 💾 СОХРАНЯЕМ ДАННЫЕ В ПАМЯТЬ
+      localStorage.setItem('client_info', JSON.stringify({
+          name: formData.name,
+          phone: formData.phone,
+          petName: formData.petName,
+          petBreed: formData.petBreed
+      }));
+
       setStep('success');
       // @ts-ignore
       if (window.confetti) window.confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
@@ -125,13 +160,11 @@ export function ClientBookingPage() {
     }
   };
 
-  // === РЕНДЕР: Загрузка ===
   if ((isSalonLoading || isServicesLoading) && step !== 'success') {
     return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader2 className="animate-spin text-[#007AFF]" size={32}/></div>;
   }
 
   const totalAmount = selectedServices.reduce((sum, s) => sum + s.price, 0);
-  const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0);
 
   return (
     <div className="flex flex-col min-h-screen bg-[#F2F2F7] max-w-md mx-auto overflow-x-hidden font-sans pb-24">
@@ -169,14 +202,13 @@ export function ClientBookingPage() {
                 </div>
             )}
 
-            {/* Галерея */}
             {salon.gallery?.length > 0 && (
                <div className="p-5 pb-0 space-y-3">
                    <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 flex items-center gap-2">
                        <ImageIcon size={14}/> Наши работы
                    </h3>
                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-5 px-5 snap-x">
-                       {salon.gallery.map((img, i) => (
+                       {salon.gallery.map((img: string, i: number) => (
                            <img
                                key={i} src={img} onClick={() => setLightboxIndex(i)}
                                className="snap-start shrink-0 w-32 h-32 rounded-[20px] object-cover shadow-sm cursor-pointer active:scale-95 transition-transform border border-slate-100"
@@ -186,7 +218,6 @@ export function ClientBookingPage() {
                </div>
             )}
 
-            {/* Список услуг */}
             <div className="p-5 space-y-4 pb-28">
               <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Выберите услуги</h3>
               {services.map(s => {
@@ -224,7 +255,6 @@ export function ClientBookingPage() {
         {/* ЭКРАН 2: ВРЕМЯ */}
         {step === 'datetime' && (
           <div className="p-5 space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
-            {/* Календарь (горизонтальный) */}
             <section>
               <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 mb-3">Выберите дату</h3>
               <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
@@ -243,7 +273,6 @@ export function ClientBookingPage() {
               </div>
             </section>
 
-            {/* Слоты времени */}
             <section>
               <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 mb-3">Доступное время</h3>
               <div className="relative min-h-[100px]">
@@ -274,7 +303,6 @@ export function ClientBookingPage() {
         {/* ЭКРАН 3: ДЕТАЛИ */}
         {step === 'details' && (
           <div className="p-5 space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-            {/* Чек */}
             <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-sm relative overflow-hidden">
                 <div className="absolute top-0 left-0 right-0 h-1.5 bg-[repeating-linear-gradient(45deg,#F2F2F7,#F2F2F7_10px,#fff_10px,#fff_20px)] opacity-50"></div>
                 <div className="flex flex-col gap-4">
@@ -297,16 +325,15 @@ export function ClientBookingPage() {
                 </div>
             </div>
 
-            {/* Форма */}
             <div className="space-y-4">
-               <InputBlock label="Имя" value={formData.name} onChange={v => setFormData({...formData, name: v})} placeholder="Ваше имя" />
+               <InputBlock label="Имя" value={formData.name} onChange={(v: string) => setFormData({...formData, name: v})} placeholder="Ваше имя" />
                <div className="bg-white rounded-[20px] p-4 border border-slate-100 shadow-sm">
                   <p className="text-[10px] font-black text-[#8E8E93] uppercase mb-1 ml-1">Телефон</p>
                   <PhoneInput value={formData.phone} onChange={val => setFormData({...formData, phone: val})} className="border-none shadow-none h-auto p-0 text-[17px] font-bold caret-[#007AFF]" />
                </div>
                <div className="grid grid-cols-2 gap-3">
-                  <InputBlock label="Кличка" value={formData.petName} onChange={v => setFormData({...formData, petName: v})} placeholder="Арчи" />
-                  <InputBlock label="Порода" value={formData.petBreed} onChange={v => setFormData({...formData, petBreed: v})} placeholder="Шпиц" />
+                  <InputBlock label="Кличка" value={formData.petName} onChange={(v: string) => setFormData({...formData, petName: v})} placeholder="Арчи" />
+                  <InputBlock label="Порода" value={formData.petBreed} onChange={(v: string) => setFormData({...formData, petBreed: v})} placeholder="Шпиц" />
                </div>
 
                <div className="flex items-center gap-3 p-4 bg-white rounded-[20px] border border-slate-100 shadow-sm" onClick={() => setFormData({...formData, agreed: !formData.agreed})}>
@@ -344,7 +371,6 @@ export function ClientBookingPage() {
         )}
       </div>
 
-      {/* FLOAT BAR (Внизу) */}
       {step === 'showcase' && selectedServices.length > 0 && (
           <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-100 z-30 animate-in slide-in-from-bottom duration-300 max-w-md mx-auto">
               <button onClick={() => setStep('datetime')} className="w-full bg-[#007AFF] text-white py-4 rounded-[20px] font-bold text-[17px] shadow-xl shadow-blue-200 active:scale-95 transition-all flex justify-between px-6">
@@ -354,7 +380,6 @@ export function ClientBookingPage() {
           </div>
       )}
 
-      {/* ЛАЙТБОКС (Просмотр фото) */}
       {lightboxIndex !== null && salon?.gallery && (
           <div className="fixed inset-0 z-50 bg-black flex items-center justify-center animate-in fade-in duration-200" onClick={() => setLightboxIndex(null)}>
               <button className="absolute top-4 right-4 text-white/80 p-2"><X size={32}/></button>
@@ -371,7 +396,6 @@ export function ClientBookingPage() {
   );
 }
 
-// Мини-компонент для инпутов
 const InputBlock = ({ label, value, onChange, placeholder }: any) => (
   <div className="bg-white rounded-[20px] p-4 border border-slate-100 shadow-sm">
     <p className="text-[10px] font-black text-[#8E8E93] uppercase mb-1 ml-1">{label}</p>
