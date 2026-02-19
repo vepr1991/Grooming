@@ -1,5 +1,4 @@
 import os
-import threading
 import logging
 import json
 import time
@@ -11,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Depends
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Header, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
 from supabase import create_client, Client
@@ -27,6 +26,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+BACKEND_URL = os.getenv("BACKEND_URL")  # 👈 ОБЯЗАТЕЛЬНО ДОБАВИТЬ В ENV
 
 if not all([SUPABASE_URL, SUPABASE_KEY, TELEGRAM_BOT_TOKEN]):
     logger.critical("⚠️ ОШИБКА: Не заданы переменные окружения!")
@@ -39,21 +39,39 @@ scheduler = AsyncIOScheduler()
 # --- 2. Жизненный цикл ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if os.environ.get("RUN_BOT") != "false":
-        logger.info("🚀 Запуск сервера, бота и планировщика...")
-        threading.Thread(target=start_bot_polling, daemon=True).start()
+    # 1. Настройка Webhook (вместо Polling)
+    if BACKEND_URL and TELEGRAM_BOT_TOKEN:
+        try:
+            webhook_url = f"{BACKEND_URL}/api/webhook"
+            logger.info(f"🔗 Setting webhook to: {webhook_url}")
+
+            # Сбрасываем старый и ставим новый
+            bot.remove_webhook()
+            time.sleep(1)
+            bot.set_webhook(url=webhook_url)
+        except Exception as e:
+            logger.error(f"❌ Webhook setup failed: {e}")
+    else:
+        logger.warning("⚠️ BACKEND_URL не задан! Бот не будет отвечать на сообщения.")
+
+    # 2. Планировщик напоминаний
+    if os.environ.get("RUN_SCHEDULER") != "false":
+        logger.info("⏰ Starting scheduler...")
         scheduler.add_job(check_upcoming_appointments, 'interval', minutes=5)
         scheduler.start()
+
     yield
-    logger.info("🛑 Остановка сервера...")
+
+    # 3. Остановка (удаляем вебхук при выключении, чтобы не спамить ошибками)
+    logger.info("🛑 Shutting down...")
     try:
-        bot.stop_polling()
+        bot.remove_webhook()
         scheduler.shutdown()
     except Exception:
         pass
 
 
-app = FastAPI(title="Grooming API", version="4.2", lifespan=lifespan)
+app = FastAPI(title="Grooming API", version="4.3", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -161,16 +179,6 @@ def verify_telegram_data(x_telegram_init_data: str = Header(None)) -> Optional[i
 
 
 # --- 5. Вспомогательные функции ---
-def start_bot_polling():
-    try:
-        bot.remove_webhook()
-        time.sleep(1)
-        logger.info("🤖 Bot started polling...")
-        bot.infinity_polling(timeout=10, long_polling_timeout=5)
-    except Exception:
-        pass
-
-
 def check_overlap(salon_id: str, start_time: datetime, end_time: datetime) -> bool:
     try:
         res = supabase.table("appointments").select("id").eq("salon_id", salon_id) \
@@ -304,14 +312,27 @@ def send_client_notification(appointment_id: str, status_type: str):
 
 # --- API Endpoints ---
 @app.get("/")
-def health_check(): return {"status": "active", "version": "4.2"}
+def health_check(): return {"status": "active", "version": "4.3"}
+
+
+# 👇 НОВЫЙ ЭНДПОИНТ: Сюда Телеграм будет слать обновления
+@app.post("/api/webhook")
+def process_webhook(update: dict):
+    """
+    Принимает обновления от Telegram (Webhook)
+    Используем синхронный def, чтобы FastAPI запустил это в отдельном потоке
+    и не блокировал event loop тяжелыми запросами Telebot к Supabase.
+    """
+    if update:
+        update_obj = telebot.types.Update.de_json(update)
+        bot.process_new_updates([update_obj])
+    return {"status": "ok"}
 
 
 @app.get("/api/user-status/{tg_id}")
 async def check_user_status(tg_id: int):
     res = supabase.table("salons").select("id, is_approved").eq("telegram_chat_id", tg_id).execute()
     if res.data:
-        # Возвращаем статус апрува
         return {
             "isMaster": True,
             "salonId": res.data[0]['id'],
@@ -475,12 +496,11 @@ async def register_salon(p: SalonCreate):
     existing = supabase.table("salons").select("*").eq("telegram_chat_id", p.telegram_chat_id).execute()
     if existing.data: return {"success": True, "data": existing.data[0]}
 
-    # Создаем салон (неодобренный)
     new_s = p.dict()
     new_s.update({
         "slug": f"s_{p.telegram_chat_id}_{int(time.time())}",
         "is_active": True,
-        "is_approved": False,  # 👈 По умолчанию закрыто
+        "is_approved": False,
         "schedule": json.dumps(
             [{"day": d, "isWorking": d not in ["Сб", "Вс"], "hours": {"start": "10:00", "end": "20:00"}} for d in
              ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]])
@@ -489,7 +509,6 @@ async def register_salon(p: SalonCreate):
     res = supabase.table("salons").insert(new_s).execute()
     new_salon = res.data[0]
 
-    # Уведомляем админа
     if ADMIN_CHAT_ID:
         try:
             markup = types.InlineKeyboardMarkup()
@@ -544,11 +563,16 @@ async def up_svc(sid: str, p: ServiceUpdate):
     return {"success": True, "data": res.data[0]}
 
 
+# --- Bot Handlers ---
 @bot.message_handler(commands=['start'])
-def h_start(m): bot.reply_to(m, f"👋 ID: `{m.chat.id}`", parse_mode="Markdown")
+def h_start(m):
+    # Кнопка для открытия WebApp
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🚀 Открыть приложение",
+                                          web_app=types.WebAppInfo("https://grooming-tma.onrender.com")))
+    bot.reply_to(m, f"Привет! Я бот для записи на груминг.\nЖми кнопку ниже 👇", reply_markup=markup)
 
 
-# Обработчик кнопок админа
 @bot.callback_query_handler(func=lambda call: call.data.startswith('approve_') or call.data.startswith('reject_'))
 def handle_admin_decision(call):
     if str(call.message.chat.id) != str(ADMIN_CHAT_ID): return
