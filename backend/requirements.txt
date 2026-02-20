@@ -3,4 +3,5 @@ uvicorn
 supabase
 python-dotenv
 pyTelegramBotAPI
+pytz
 apscheduler==3.10.4
