@@ -134,7 +134,7 @@ export function ClientBookingPage() {
     if (!selectedTime || !salonId) return;
 
     try {
-      // ИЗМЕНЕНИЕ: Динамически формируем метаданные
+      // Динамически формируем метаданные
       const metadataParams = isGrooming ? {
           petName: formData.petName,
           petBreed: formData.petBreed
@@ -150,15 +150,21 @@ export function ClientBookingPage() {
           phone: formData.phone,
           telegram_user: tgUser || null
         },
-        metadata: metadataParams // <--- Отправляем новый JSON
+        metadata: metadataParams
       });
 
-      // 💾 СОХРАНЯЕМ ДАННЫЕ В ПАМЯТЬ
+      // 💾 УМНОЕ СОХРАНЕНИЕ В ПАМЯТЬ (не стираем старые данные из других ниш)
+      const existingData = JSON.parse(localStorage.getItem('client_info') || '{}');
+
       localStorage.setItem('client_info', JSON.stringify({
+          ...existingData,
           name: formData.name,
           phone: formData.phone,
-          petName: isGrooming ? formData.petName : "",
-          petBreed: isGrooming ? formData.petBreed : ""
+          // Обновляем данные питомца ТОЛЬКО если это груминг
+          ...(isGrooming && {
+              petName: formData.petName,
+              petBreed: formData.petBreed
+          })
       }));
 
       setStep('success');
@@ -344,7 +350,7 @@ export function ClientBookingPage() {
                   <PhoneInput value={formData.phone} onChange={val => setFormData({...formData, phone: val})} className="border-none shadow-none h-auto p-0 text-[17px] font-bold caret-[#007AFF]" />
                </div>
 
-               {/* ИЗМЕНЕНИЕ: Скрываем собак, если это маникюр */}
+               {/* Скрываем собак, если это маникюр */}
                {isGrooming && (
                    <div className="grid grid-cols-2 gap-3">
                       <InputBlock label="Кличка" value={formData.petName} onChange={(v: string) => setFormData({...formData, petName: v})} placeholder="Арчи" />
