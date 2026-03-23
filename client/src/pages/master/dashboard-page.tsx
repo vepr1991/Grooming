@@ -18,7 +18,8 @@ import {
   BarChart3,
   Coffee,
   Trash2,
-  Clock
+  Clock,
+  User
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,8 +32,8 @@ type Appointment = {
   client_name: string;
   client_phone: string;
   client_tg_user?: string | any;
-  pet_name: string;
-  pet_breed: string;
+  // ИЗМЕНЕНИЕ: Заменяем старые поля на универсальные метаданные
+  metadata?: any;
   start_time: string;
   end_time: string;
   status: 'pending' | 'confirmed' | 'completed' | 'canceled' | 'blocked';
@@ -66,7 +67,7 @@ export function MasterDashboardPage() {
   const [isAddingBlock, setIsAddingBlock] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 👇 Состояние для ID удаляемого блока
+  // Состояние для ID удаляемого блока
   const [blockToDelete, setBlockToDelete] = useState<string | null>(null);
 
   const [newApp, setNewApp] = useState({
@@ -150,19 +151,27 @@ export function MasterDashboardPage() {
         const selectedS = services.find(s => s.id === newApp.service_id);
         if (!selectedS) return;
 
+        // ИЗМЕНЕНИЕ: Формируем metadata для ручной записи (если мастер ввел кличку)
+        const metadataParams = newApp.pet_name ? { petName: newApp.pet_name, petBreed: newApp.pet_breed } : {};
+
         await api.createBooking({
             salonId,
-            service: { id: selectedS.id, title: selectedS.title, duration_minutes: selectedS.duration_minutes },
+            services: [{ id: selectedS.id, title: selectedS.title, price: selectedS.price, duration_minutes: selectedS.duration_minutes }],
             date: newApp.date,
             time: newApp.time,
             client: { name: newApp.client_name, phone: newApp.client_phone },
-            pet: { name: newApp.pet_name, petBreed: newApp.pet_breed }
+            metadata: metadataParams // <--- Отправляем метаданные вместо pet
         });
         toast.success("Записано!");
         setIsAdding(false);
+        setNewApp({
+            client_name: "", client_phone: "", pet_name: "", pet_breed: "", service_id: "",
+            date: format(new Date(), "yyyy-MM-dd"), time: format(new Date(), "HH:mm"),
+            duration_minutes: 60
+        });
         fetchAppointments();
     } catch (e: any) {
-        toast.error("Ошибка");
+        toast.error("Ошибка при записи");
     } finally {
         setIsSubmitting(false);
     }
@@ -335,7 +344,8 @@ export function MasterDashboardPage() {
             </div>
             <div className="px-5 mt-6 space-y-4">
                <div className="bg-white p-4 rounded-xl space-y-3"><input placeholder="Имя" className="w-full text-lg outline-none" value={newApp.client_name} onChange={e => setNewApp({...newApp, client_name: e.target.value})} /><PhoneInput value={newApp.client_phone} onChange={val => setNewApp({...newApp, client_phone: val})} /></div>
-               <div className="grid grid-cols-2 gap-3"><input placeholder="Кличка" className="bg-white p-3 rounded-xl outline-none" value={newApp.pet_name} onChange={e => setNewApp({...newApp, pet_name: e.target.value})} /><input placeholder="Порода" className="bg-white p-3 rounded-xl outline-none" value={newApp.pet_breed} onChange={e => setNewApp({...newApp, pet_breed: e.target.value})} /></div>
+               {/* Оставляем эти поля для ручного добавления, но они станут необязательными для сервера */}
+               <div className="grid grid-cols-2 gap-3"><input placeholder="Кличка (если есть)" className="bg-white p-3 rounded-xl outline-none text-sm" value={newApp.pet_name} onChange={e => setNewApp({...newApp, pet_name: e.target.value})} /><input placeholder="Порода" className="bg-white p-3 rounded-xl outline-none text-sm" value={newApp.pet_breed} onChange={e => setNewApp({...newApp, pet_breed: e.target.value})} /></div>
                <select className="w-full bg-white p-3 rounded-xl outline-none" value={newApp.service_id} onChange={e => setNewApp({...newApp, service_id: e.target.value})}><option value="">Выбрать услугу</option>{services.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}</select>
                <div className="grid grid-cols-2 gap-3"><input type="date" className="p-3 rounded-xl bg-white outline-none" value={newApp.date} onChange={e => setNewApp({...newApp, date: e.target.value})} /><input type="time" className="p-3 rounded-xl bg-white outline-none" value={newApp.time} onChange={e => setNewApp({...newApp, time: e.target.value})} /></div>
             </div>
@@ -343,7 +353,7 @@ export function MasterDashboardPage() {
         </div>
       )}
 
-      {/* Модалка перерыва */}
+      {/* Модалки перерыва и удаления (без изменений) */}
       {isAddingBlock && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
             <div className="bg-white w-full max-w-sm p-6 rounded-[24px] shadow-2xl animate-in zoom-in-95">
@@ -368,7 +378,6 @@ export function MasterDashboardPage() {
         </div>
       )}
 
-      {/* Модалка удаления перерыва */}
       {blockToDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
             <div className="bg-white w-full max-w-sm p-6 rounded-[24px] shadow-2xl">
@@ -422,6 +431,10 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
   }
   const chatLink = tgUsername ? `https://t.me/${tgUsername}` : `https://wa.me/${cleanPhone}`;
 
+  // ИЗМЕНЕНИЕ: Динамическое определение заголовка (Кличка животного или Имя клиента)
+  const displayTitle = app.metadata?.petName || app.client_name || 'Без имени';
+  const displaySubtitle = app.metadata?.petBreed ? app.metadata.petBreed : 'Клиент';
+
   return (
     <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
       <div className="p-4 flex items-center justify-between" onClick={() => setEx(!ex)}>
@@ -432,38 +445,40 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
           </div>
           <div className="w-[1px] h-8 bg-slate-100" />
           <div>
-            <div className="font-bold">{app.pet_name || 'Без имени'}</div>
-            <div className="text-xs text-slate-400">{sInfo?.title || 'Услуга'}</div>
+            {/* ИЗМЕНЕНИЕ: Выводим динамический заголовок */}
+            <div className="font-bold text-[15px] text-black">{displayTitle}</div>
+            <div className="text-[13px] font-medium text-slate-400 mt-0.5">{sInfo?.title || 'Услуга'}</div>
           </div>
         </div>
         <div className="flex items-center gap-2 ml-2 shrink-0">
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: cfg.bg, color: cfg.text }}>{cfg.lbl}</span>
-          <ChevronDown size={16} className={ex ? "rotate-180" : ""} />
+          <ChevronDown size={16} className={ex ? "rotate-180 text-[#007AFF]" : "text-[#8E8E93]"} />
         </div>
       </div>
+
       {ex && (
         <div className="px-4 pb-4 space-y-4 animate-in slide-in-from-top-1">
           <div className="pt-3 border-t flex gap-4">
-            <div className="w-16 h-16 rounded-xl bg-slate-50 overflow-hidden shrink-0">
-              {sInfo?.image_url ? <img src={sInfo.image_url} className="w-full h-full object-cover" /> : <Scissors className="m-auto mt-4 opacity-10" />}
+            <div className="w-16 h-16 rounded-[14px] bg-slate-50 overflow-hidden shrink-0 flex items-center justify-center">
+              {sInfo?.image_url ? <img src={sInfo.image_url} className="w-full h-full object-cover" /> : <User className="text-slate-300" size={28} />}
             </div>
-            <div className="space-y-1">
-              <div className="font-bold text-sm">{app.pet_breed}</div>
-              <div className="text-xs bg-slate-50 p-2 rounded-lg">{sInfo?.title} • {sInfo?.price} ₸</div>
-              <div className="text-xs text-slate-400">Владелец: {app.client_name}</div>
+            <div className="space-y-1.5 flex-1">
+              <div className="font-bold text-sm text-black">{displaySubtitle}</div>
+              <div className="text-xs font-bold text-[#007AFF] bg-[#007AFF]/10 p-2 rounded-lg inline-block">{sInfo?.title} • {sInfo?.price} ₸</div>
+              <div className="text-[13px] font-medium text-slate-500">Владелец: {app.client_name}</div>
             </div>
           </div>
 
           {app.client_phone && (
             <div className="flex gap-2">
-               <button onClick={() => { navigator.clipboard.writeText(app.client_phone); toast.success("Скопировано"); window.location.href=`tel:${cleanPhone}`; }} className="flex-1 bg-slate-50 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm active:scale-95"><Copy size={14}/> {app.client_phone}</button>
+               <button onClick={() => { navigator.clipboard.writeText(app.client_phone); toast.success("Скопировано"); window.location.href=`tel:${cleanPhone}`; }} className="flex-1 bg-slate-50 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm text-black active:scale-95 transition-transform"><Copy size={16} className="text-[#8E8E93]"/> {app.client_phone}</button>
                <a href={chatLink} target="_blank" className="w-14 flex items-center justify-center rounded-xl bg-[#E3F2FF] text-[#007AFF] active:scale-95 transition-transform"><MessageSquare size={20}/></a>
             </div>
           )}
 
           <div className="flex gap-2 border-t pt-3">
-            {app.status === 'pending' && <><button onClick={() => onStatusUpdate(app.id, 'confirmed')} className="flex-1 bg-[#007AFF] text-white py-2 rounded-xl font-bold active:scale-95">Принять</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="flex-1 bg-slate-50 text-red-500 py-2 rounded-xl font-bold active:scale-95">Отмена</button></>}
-            {app.status === 'confirmed' && <><button onClick={() => onStatusUpdate(app.id, 'completed')} className="flex-1 bg-green-600 text-white py-2 rounded-xl font-bold active:scale-95">Готово</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="flex-1 bg-slate-50 text-red-500 py-2 rounded-xl font-bold active:scale-95">Отмена</button></>}
+            {app.status === 'pending' && <><button onClick={() => onStatusUpdate(app.id, 'confirmed')} className="flex-1 bg-[#007AFF] text-white py-3 rounded-xl font-bold active:scale-95 shadow-sm">Принять</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="flex-1 bg-[#FFEBEE] text-[#C62828] py-3 rounded-xl font-bold active:scale-95">Отмена</button></>}
+            {app.status === 'confirmed' && <><button onClick={() => onStatusUpdate(app.id, 'completed')} className="flex-1 bg-[#34C759] text-white py-3 rounded-xl font-bold active:scale-95 shadow-sm flex items-center justify-center gap-2"><CheckCircle2 size={18}/> Готово</button><button onClick={() => onStatusUpdate(app.id, 'canceled')} className="flex-1 bg-[#FFEBEE] text-[#C62828] py-3 rounded-xl font-bold active:scale-95">Отмена</button></>}
           </div>
         </div>
       )}

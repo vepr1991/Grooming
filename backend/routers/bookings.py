@@ -11,7 +11,7 @@ from logic import verify_telegram_data, validate_working_hours, check_overlap, s
 router = APIRouter()
 
 
-# --- BOOKING ---
+# --- BOOKING (Публичный эндпоинт, доступен всем клиентам) ---
 @router.post("/api/book")
 async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks):
     total_duration = sum(s.duration_minutes for s in data.services)
@@ -27,8 +27,9 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
         "client_name": data.client.name,
         "client_phone": data.client.phone,
         "client_tg_user": json.dumps(data.client.telegram_user),
-        "pet_name": data.pet.name,
-        "pet_breed": data.pet.petBreed,
+        "metadata": data.metadata,
+        "pet_name": data.metadata.get("petName", "") if data.metadata else "",
+        "pet_breed": data.metadata.get("petBreed", "") if data.metadata else "",
         "start_time": start_dt.isoformat(),
         "end_time": end_dt.isoformat(),
         "status": "pending",
@@ -39,12 +40,13 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
     return {"success": True, "id": res.data[0]['id']}
 
 
+# --- BLOCK SLOT (Только для владельца салона) ---
 @router.post("/api/block")
 async def block_slot(data: BlockRequest, tg_user_id: Optional[int] = Depends(verify_telegram_data)):
-    if tg_user_id:
-        check = supabase.table("salons").select("id").eq("id", data.salonId).eq("telegram_chat_id",
-                                                                                tg_user_id).execute()
-        if not check.data: raise HTTPException(403, "Forbidden")
+    if not tg_user_id: raise HTTPException(401, "Unauthorized")  # ЖЕСТКАЯ ПРОВЕРКА
+
+    check = supabase.table("salons").select("id").eq("id", data.salonId).eq("telegram_chat_id", tg_user_id).execute()
+    if not check.data: raise HTTPException(403, "Forbidden")
 
     start_dt = datetime.fromisoformat(f"{data.date}T{data.time}:00")
     end_dt = start_dt + timedelta(minutes=data.duration_minutes)
@@ -62,20 +64,35 @@ async def block_slot(data: BlockRequest, tg_user_id: Optional[int] = Depends(ver
     return {"success": True, "id": res.data[0]['id']}
 
 
+# --- UPDATE STATUS (Только для владельца салона) ---
 @router.patch("/api/appointments/{appointment_id}/status")
-async def update_status(appointment_id: str, payload: StatusUpdate, background_tasks: BackgroundTasks):
+async def update_status(appointment_id: str, payload: StatusUpdate, background_tasks: BackgroundTasks,
+                        tg_user_id: Optional[int] = Depends(verify_telegram_data)):
+    if not tg_user_id: raise HTTPException(401, "Unauthorized")  # ЖЕСТКАЯ ПРОВЕРКА
+
+    # 1. Узнаем, к какому салону относится эта запись
+    appt = supabase.table("appointments").select("salon_id").eq("id", appointment_id).single().execute()
+    if not appt.data: raise HTTPException(404, "Appointment not found")
+
+    # 2. Проверяем, владеет ли мастер этим салоном
+    check = supabase.table("salons").select("id").eq("id", appt.data['salon_id']).eq("telegram_chat_id",
+                                                                                     tg_user_id).execute()
+    if not check.data: raise HTTPException(403, "Forbidden")
+
     res = supabase.table("appointments").update({"status": payload.status}).eq("id", appointment_id).execute()
     if payload.status in ['confirmed', 'canceled']:
         background_tasks.add_task(send_client_notification, appointment_id, payload.status)
     return {"success": True, "data": res.data[0]}
 
 
-# --- CLIENTS ---
+# --- CLIENTS (Только для владельца салона) ---
 @router.get("/api/clients/{salon_id}")
 async def get_salon_clients(salon_id: str, tg_user_id: Optional[int] = Depends(verify_telegram_data)):
-    if tg_user_id:
-        check = supabase.table("salons").select("id").eq("id", salon_id).eq("telegram_chat_id", tg_user_id).execute()
-        if not check.data: raise HTTPException(403)
+    if not tg_user_id: raise HTTPException(401, "Unauthorized")  # ЖЕСТКАЯ ПРОВЕРКА
+
+    check = supabase.table("salons").select("id").eq("id", salon_id).eq("telegram_chat_id", tg_user_id).execute()
+    if not check.data: raise HTTPException(403, "Forbidden")
+
     try:
         res = supabase.table("appointments").select("*").eq("salon_id", salon_id).order("start_time",
                                                                                         desc=True).execute()
@@ -88,8 +105,9 @@ async def get_salon_clients(salon_id: str, tg_user_id: Optional[int] = Depends(v
                 clients_dict[phone] = {
                     "name": app['client_name'],
                     "phone": phone,
-                    "pet_name": app['pet_name'],
-                    "pet_breed": app['pet_breed'],
+                    "metadata": app.get('metadata', {}),
+                    "pet_name": app.get('pet_name'),
+                    "pet_breed": app.get('pet_breed'),
                     "total_visits": 0,
                     "last_visit": app['start_time'],
                     "tg_user": app.get('client_tg_user')
@@ -102,12 +120,14 @@ async def get_salon_clients(salon_id: str, tg_user_id: Optional[int] = Depends(v
         raise HTTPException(500, str(e))
 
 
-# --- ANALYTICS ---
+# --- ANALYTICS (Только для владельца салона) ---
 @router.get("/api/analytics/{salon_id}")
 async def get_analytics(salon_id: str, tg_user_id: Optional[int] = Depends(verify_telegram_data)):
-    if tg_user_id:
-        check = supabase.table("salons").select("id").eq("id", salon_id).eq("telegram_chat_id", tg_user_id).execute()
-        if not check.data: raise HTTPException(403)
+    if not tg_user_id: raise HTTPException(401, "Unauthorized")  # ЖЕСТКАЯ ПРОВЕРКА
+
+    check = supabase.table("salons").select("id").eq("id", salon_id).eq("telegram_chat_id", tg_user_id).execute()
+    if not check.data: raise HTTPException(403, "Forbidden")
+
     try:
         today = datetime.now()
         start_month = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()

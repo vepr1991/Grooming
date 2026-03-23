@@ -21,10 +21,14 @@ export function MasterServicesPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // States for Add/Edit Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // 👇 State для кастомной модалки удаления
+  const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<Partial<Service>>({
     title: "",
@@ -140,16 +144,24 @@ export function MasterServicesPage() {
     }
   };
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
+  // 👇 Открываем модалку вместо alert()
+  const promptDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Удалить эту услугу из прайса?")) return;
+    setServiceToDelete(id);
+  };
+
+  // 👇 Реальное удаление услуги
+  const confirmDelete = async () => {
+    if (!serviceToDelete) return;
 
     try {
-      await api.deleteService(id);
+      await api.deleteService(serviceToDelete);
       toast.success("Услуга удалена");
-      setServices(prev => prev.filter(s => s.id !== id));
+      setServices(prev => prev.filter(s => s.id !== serviceToDelete));
     } catch (e: any) {
       toast.error(e.message || "Не удалось удалить услугу");
+    } finally {
+      setServiceToDelete(null); // Закрываем модалку
     }
   };
 
@@ -181,7 +193,7 @@ export function MasterServicesPage() {
             <ServiceCard
               key={s.id}
               service={s}
-              onDelete={(e) => handleDelete(s.id, e)}
+              onDelete={(e) => promptDelete(s.id, e)} // 👈 Передаем новую функцию
               onEdit={(e) => openEditModal(s, e)}
             />
           ))
@@ -276,12 +288,12 @@ export function MasterServicesPage() {
                 </div>
               </div>
 
-              {/* 👇 ПОЛЕ ДЛЯ ОПИСАНИЯ */}
+              {/* ПОЛЕ ДЛЯ ОПИСАНИЯ */}
               <div className="space-y-1.5">
                 <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1">Описание</label>
                 <div className="bg-white rounded-[12px] p-3 border border-slate-100 shadow-sm">
                   <textarea
-                    placeholder="Что входит в услугу (купание, стрижка когтей...)"
+                    placeholder="Что входит в услугу..."
                     rows={4}
                     className="w-full text-[17px] outline-none resize-none caret-[#007AFF] bg-transparent"
                     value={formData.description}
@@ -291,6 +303,33 @@ export function MasterServicesPage() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 👇 КРАСИВАЯ МОДАЛКА ПОДТВЕРЖДЕНИЯ УДАЛЕНИЯ */}
+      {serviceToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+            <div className="bg-white w-full max-w-sm p-6 rounded-[24px] shadow-2xl animate-in zoom-in-95 duration-200">
+                <div className="w-12 h-12 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Trash2 size={24} />
+                </div>
+                <h3 className="text-xl font-bold text-center mb-2 text-black">Удалить услугу?</h3>
+                <p className="text-center text-[#8E8E93] text-[14px] mb-6">Это действие нельзя будет отменить.</p>
+                <div className="flex gap-3">
+                    <button
+                      onClick={() => setServiceToDelete(null)}
+                      className="flex-1 py-3 bg-[#F2F2F7] text-black rounded-xl font-bold active:scale-95 transition-transform"
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      onClick={confirmDelete}
+                      className="flex-1 py-3 bg-[#FF3B30] text-white rounded-xl font-bold active:scale-95 transition-transform"
+                    >
+                      Удалить
+                    </button>
+                </div>
+            </div>
         </div>
       )}
     </div>
@@ -339,7 +378,6 @@ function ServiceCard({ service, onDelete, onEdit }: { service: Service; onDelete
         </div>
       </div>
 
-      {/* 👇 ОТОБРАЖЕНИЕ ОПИСАНИЯ ПРИ РАСКРЫТИИ */}
       {expanded && service.description && (
         <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-300">
           <div className="pt-3 border-t border-[#F2F2F7] overflow-hidden">

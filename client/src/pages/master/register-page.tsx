@@ -7,7 +7,6 @@ import {
   ArrowRight,
   Sparkles,
   Timer,
-  Scissors,
   CheckCircle2,
   Loader2
 } from "lucide-react";
@@ -18,20 +17,20 @@ import { PhoneInput } from "@/components/ui/phone-input";
 // 👇 URL ТВОЕГО БЕКЕНДА
 const BACKEND_URL = "https://grooming-tma.onrender.com";
 
-export function MasterRegisterPage() { // Если у тебя экспорт RegisterPage, переименуй
+export function MasterRegisterPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
   // Данные формы
   const [formData, setFormData] = useState({
+    niche: "", // <--- НОВОЕ ПОЛЕ НИШИ
     name: "",
     address: "",
     phone: "",
     telegramId: null as number | null,
     telegramName: "",
-    slot_step: 30,
-    firstService: { title: "Стрижка", price: 5000, duration: 60 }
+    slot_step: 30
   });
 
   useEffect(() => {
@@ -45,26 +44,24 @@ export function MasterRegisterPage() { // Если у тебя экспорт Re
         telegramId: tgUser.id,
         telegramName: tgUser.first_name
       }));
-    } else {
-      // Для тестов в браузере (раскомментируй при необходимости)
-      // setFormData(prev => ({ ...prev, telegramId: 12345, telegramName: "Test" }));
     }
   }, []);
 
   const handleFinish = async () => {
-    if (!formData.name || !formData.telegramId) {
+    if (!formData.name || !formData.telegramId || !formData.niche) {
       toast.error("Ошибка: Недостаточно данных для регистрации");
       return;
     }
 
     setLoading(true);
-    const toastId = toast.loading("Создаем ваш салон...");
+    const toastId = toast.loading("Создаем ваш профиль...");
 
     try {
       // 1. Создаем салон через БЕКЕНД
       const registerPayload = {
           telegram_chat_id: formData.telegramId,
           name: formData.name,
+          niche: formData.niche, // <--- ОТПРАВЛЯЕМ НИШУ
           address: formData.address,
           phone: formData.phone,
           slot_step: formData.slot_step
@@ -76,34 +73,15 @@ export function MasterRegisterPage() { // Если у тебя экспорт Re
           body: JSON.stringify(registerPayload)
       });
 
-      if (!salonRes.ok) throw new Error("Ошибка при регистрации салона");
+      if (!salonRes.ok) throw new Error("Ошибка при регистрации");
 
       const salonData = await salonRes.json();
       const salon = salonData.data;
 
-      // 2. Добавляем первую услугу через БЕКЕНД
-      if (formData.firstService.title) {
-          const servicePayload = {
-              salon_id: salon.id,
-              title: formData.firstService.title,
-              price: Number(formData.firstService.price),
-              duration_minutes: Number(formData.firstService.duration),
-              description: "Базовая услуга",
-              image_url: ""
-          };
-
-          await fetch(`${BACKEND_URL}/api/services`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(servicePayload)
-          });
-      }
-
       localStorage.setItem("salon_id", salon.id);
-      toast.success("Салон успешно создан! 🚀", { id: toastId });
+      toast.success("Готово! 🚀", { id: toastId });
 
-      // 👇 ВАЖНО: Делаем полную перезагрузку, чтобы AuthCheck увидел новый статус
-      // и показал экран "Ожидание проверки" (pending_approval)
+      // Перезагрузка для обновления AuthCheck
       setTimeout(() => {
           window.location.href = "/";
       }, 1000);
@@ -118,7 +96,6 @@ export function MasterRegisterPage() { // Если у тебя экспорт Re
 
   return (
     <div className="min-h-screen bg-[#F2F2F7] flex flex-col font-sans overflow-hidden">
-      {/* Прогресс-бар iOS */}
       <div className="px-6 pt-12 flex gap-2">
         {[1, 2, 3].map(i => (
           <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-700 ${step >= i ? 'bg-[#007AFF]' : 'bg-white shadow-inner'}`} />
@@ -126,14 +103,45 @@ export function MasterRegisterPage() { // Если у тебя экспорт Re
       </div>
 
       <div className="flex-1 px-6 pt-10 pb-10 flex flex-col">
-        {/* ШАГ 1: БАЗОВЫЕ ДАННЫЕ */}
+
+        {/* ШАГ 1: ВЫБОР НИШИ */}
         {step === 1 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
             <div>
               <h1 className="text-[34px] font-extrabold tracking-tight text-black leading-tight">
-                {formData.telegramName ? `Привет, ${formData.telegramName}!` : "Добро пожаловать!"}
+                Выберите сферу
               </h1>
-              <p className="text-[17px] text-[#8E8E93] font-medium mt-2">Давайте создадим ваш первый салон в системе.</p>
+              <p className="text-[17px] text-[#8E8E93] font-medium mt-2">Мы автоматически настроим приложение под ваш бизнес.</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => { setFormData({...formData, niche: 'beauty'}); nextStep(); }}
+                className="bg-white p-6 rounded-[24px] shadow-sm border border-slate-100 flex flex-col items-center gap-4 active:scale-95 transition-all"
+              >
+                <span className="text-[48px]">💅</span>
+                <span className="font-bold text-[15px] text-center">Маникюр & Бьюти</span>
+              </button>
+
+              <button
+                onClick={() => { setFormData({...formData, niche: 'grooming'}); nextStep(); }}
+                className="bg-white p-6 rounded-[24px] shadow-sm border border-slate-100 flex flex-col items-center gap-4 active:scale-95 transition-all"
+              >
+                <span className="text-[48px]">🐶</span>
+                <span className="font-bold text-[15px] text-center">Груминг</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ШАГ 2: БАЗОВЫЕ ДАННЫЕ */}
+        {step === 2 && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
+            <div>
+              <h1 className="text-[34px] font-extrabold tracking-tight text-black leading-tight">
+                {formData.niche === 'beauty' ? 'Ваш салон' : 'Ваш груминг'}
+              </h1>
+              <p className="text-[17px] text-[#8E8E93] font-medium mt-2">Как клиенты будут вас видеть?</p>
             </div>
 
             <div className="space-y-4">
@@ -143,7 +151,7 @@ export function MasterRegisterPage() { // Если у тебя экспорт Re
                 </label>
                 <div className="bg-white rounded-[16px] p-1 border border-slate-200 shadow-sm">
                   <input
-                    placeholder="Grooming Star"
+                    placeholder={formData.niche === 'beauty' ? "Nail Studio" : "Grooming Star"}
                     className="w-full px-4 py-3.5 bg-transparent text-[17px] outline-none caret-[#007AFF]"
                     value={formData.name}
                     onChange={e => setFormData({...formData, name: e.target.value})}
@@ -167,7 +175,7 @@ export function MasterRegisterPage() { // Если у тебя экспорт Re
 
               <div className="space-y-1.5">
                 <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 flex items-center gap-1.5">
-                  <PhoneIcon size={14} className="text-[#34C759]"/> Телефон для записи
+                  <PhoneIcon size={14} className="text-[#34C759]"/> Телефон для связи
                 </label>
                 <div className="bg-white rounded-[16px] p-4 border border-slate-200 shadow-sm">
                   <PhoneInput
@@ -179,31 +187,22 @@ export function MasterRegisterPage() { // Если у тебя экспорт Re
               </div>
             </div>
 
-            {!formData.telegramId ? (
-              <div className="p-4 bg-red-50 rounded-2xl border border-red-100 flex items-start gap-3 mt-4">
-                <div className="text-red-500 font-bold mt-0.5">⚠️</div>
-                <p className="text-[13px] text-red-600 leading-snug">
-                  <b>Ошибка доступа.</b> Откройте приложение через Telegram.
-                </p>
-              </div>
-            ) : (
-              <button
-                disabled={!formData.name || !formData.phone}
-                onClick={nextStep}
-                className="w-full py-4 bg-[#007AFF] text-white rounded-[18px] font-bold flex items-center justify-center gap-2 shadow-xl shadow-blue-200 active:scale-95 transition-all disabled:opacity-50 mt-4"
-              >
-                Продолжить <ArrowRight size={20} />
-              </button>
-            )}
+            <button
+              disabled={!formData.name || !formData.phone}
+              onClick={nextStep}
+              className="w-full py-4 bg-[#007AFF] text-white rounded-[18px] font-bold flex items-center justify-center gap-2 shadow-xl shadow-blue-200 active:scale-95 transition-all disabled:opacity-50 mt-4"
+            >
+              Продолжить <ArrowRight size={20} />
+            </button>
           </div>
         )}
 
-        {/* ШАГ 2: ШАГ ЗАПИСИ */}
-        {step === 2 && (
+        {/* ШАГ 3: ГРАФИК И ФИНИШ */}
+        {step === 3 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
             <div>
-              <h1 className="text-[34px] font-extrabold tracking-tight text-black leading-tight">Ваш график</h1>
-              <p className="text-[17px] text-[#8E8E93] font-medium mt-2">Настройте частоту записей в календаре.</p>
+              <h1 className="text-[34px] font-extrabold tracking-tight text-black leading-tight">График</h1>
+              <p className="text-[17px] text-[#8E8E93] font-medium mt-2">Настройте частоту записей.</p>
             </div>
 
             <div className="bg-white rounded-[24px] p-6 shadow-sm border border-slate-200 space-y-6">
@@ -231,70 +230,16 @@ export function MasterRegisterPage() { // Если у тебя экспорт Re
             <div className="bg-[#E3F2FF] rounded-[24px] p-5 border border-blue-100 flex items-start gap-3">
               <CheckCircle2 className="text-[#007AFF] shrink-0 mt-0.5" size={20} />
               <p className="text-[14px] text-[#48484A] leading-relaxed">
-                Мы установили стандартный график работы: <b>10:00 — 20:00</b>. Изменить часы работы для каждого дня можно будет в профиле.
+                Базовый график: <b>10:00 — 20:00</b>. Изменить часы работы можно в профиле. Мы также создали базовые услуги, чтобы вы могли начать сразу!
               </p>
             </div>
 
             <button
-              onClick={nextStep}
-              className="w-full py-4 bg-[#007AFF] text-white rounded-[18px] font-bold flex items-center justify-center gap-2 shadow-xl shadow-blue-200 active:scale-95 transition-all"
-            >
-              Последний шаг <ArrowRight size={20} />
-            </button>
-          </div>
-        )}
-
-        {/* ШАГ 3: ПЕРВАЯ УСЛУГА */}
-        {step === 3 && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
-            <div>
-              <h1 className="text-[34px] font-extrabold tracking-tight text-black leading-tight">Первая услуга</h1>
-              <p className="text-[17px] text-[#8E8E93] font-medium mt-2">Добавьте то, на что клиенты смогут записаться сразу.</p>
-            </div>
-
-            <div className="bg-white rounded-[24px] p-5 shadow-sm border border-slate-200 space-y-5">
-              <div className="space-y-1.5">
-                <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 flex items-center gap-1.5">
-                   <Scissors size={14}/> Название услуги
-                </label>
-                <input
-                  placeholder="Комплексный уход"
-                  className="w-full px-4 py-3.5 bg-[#F2F2F7] rounded-xl text-[17px] outline-none caret-[#007AFF] font-medium"
-                  value={formData.firstService.title}
-                  onChange={e => setFormData({...formData, firstService: {...formData.firstService, title: e.target.value}})}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1">Цена (₸)</label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    className="w-full px-4 py-3.5 bg-[#F2F2F7] rounded-xl text-[17px] font-bold text-[#007AFF] outline-none"
-                    value={formData.firstService.price}
-                    onChange={e => setFormData({...formData, firstService: {...formData.firstService, price: Number(e.target.value)}})}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1">Мин.</label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    className="w-full px-4 py-3.5 bg-[#F2F2F7] rounded-xl text-[17px] font-bold text-[#007AFF] outline-none"
-                    value={formData.firstService.duration}
-                    onChange={e => setFormData({...formData, firstService: {...formData.firstService, duration: Number(e.target.value)}})}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <button
               onClick={handleFinish}
-              disabled={loading || !formData.firstService.title}
+              disabled={loading}
               className="w-full py-4 bg-[#34C759] text-white rounded-[18px] font-extrabold text-[17px] flex items-center justify-center gap-2 shadow-xl shadow-green-100 active:scale-95 transition-all mt-4 disabled:opacity-50"
             >
-              {loading ? <Loader2 className="animate-spin" /> : <><Sparkles size={20} /> Открыть салон</>}
+              {loading ? <Loader2 className="animate-spin" /> : <><Sparkles size={20} /> Завершить настройку</>}
             </button>
           </div>
         )}

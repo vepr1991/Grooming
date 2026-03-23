@@ -13,9 +13,7 @@ class ClientInfo(BaseModel):
         if not re.match(r'^[\d\+\-\(\)\s]+$', v): raise ValueError('Bad phone')
         return v
 
-class PetInfo(BaseModel):
-    name: str = Field(..., min_length=1, max_length=30)
-    petBreed: Optional[str] = Field(default="", max_length=50)
+# Класс PetInfo удален, так как мы перешли на гибкие метаданные
 
 # --- УСЛУГИ (В ЗАПИСИ) ---
 class ServiceInfo(BaseModel):
@@ -31,7 +29,8 @@ class BookingRequest(BaseModel):
     date: str
     time: str
     client: ClientInfo
-    pet: PetInfo
+    # ИЗМЕНЕНИЕ: Заменили жесткую привязку к питомцам на универсальные метаданные
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 class BlockRequest(BaseModel):
     salonId: str
@@ -47,12 +46,16 @@ class StatusUpdate(BaseModel):
 class SalonCreate(BaseModel):
     telegram_chat_id: int
     name: str = Field(..., min_length=2, max_length=50)
+    # ИЗМЕНЕНИЕ: Добавили поле niche для онбординга
+    niche: str = Field(default="grooming", pattern="^(grooming|beauty|auto|other)$")
     address: Optional[str] = ""
     phone: Optional[str] = ""
     slot_step: Optional[int] = 30
 
 class SalonUpdate(BaseModel):
     name: Optional[str] = None
+    # ИЗМЕНЕНИЕ: Позволяем обновлять нишу
+    niche: Optional[str] = None
     address: Optional[str] = None
     phone: Optional[str] = None
     description: Optional[str] = None
@@ -60,6 +63,7 @@ class SalonUpdate(BaseModel):
     photo_url: Optional[str] = None
     gallery: Optional[List[str]] = None
     slot_step: Optional[int] = None
+    instagram_url: Optional[str] = None
 
 # --- УСЛУГИ (СОЗДАНИЕ/РЕДАКТИРОВАНИЕ) ---
 class ServiceCreate(BaseModel):

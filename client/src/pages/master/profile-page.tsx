@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Camera, MapPin, Phone, Share, Globe, Save, Scissors, Edit3, Timer, Loader2, Plus, X } from "lucide-react";
+import { Camera, MapPin, Phone, Share, Globe, Save, Scissors, Edit3, Timer, Loader2, Plus, X, Instagram } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/lib/supabase";
@@ -7,7 +7,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { api } from "@/lib/api";
 import { uploadImage } from "@/lib/upload";
 
-const BOT_USERNAME = "pet_groom_bot";
+const BOT_USERNAME = "easybookapp_bot";
 const APP_NAME = "app";
 
 type ScheduleDay = {
@@ -20,7 +20,7 @@ export function MasterProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [galleryUploading, setGalleryUploading] = useState(false); // 👈 Загрузка для галереи
+  const [galleryUploading, setGalleryUploading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [salonId] = useState<string | null>(localStorage.getItem("salon_id"));
 
@@ -30,7 +30,8 @@ export function MasterProfilePage() {
     phone: "",
     description: "",
     photo_url: "",
-    gallery: [] as string[], // 👈 Массив для фото работ
+    instagram_url: "", // <--- Добавили поле
+    gallery: [] as string[],
     schedule: [] as ScheduleDay[],
     slot_step: 30
   });
@@ -50,7 +51,6 @@ export function MasterProfilePage() {
             parsedSchedule = typeof data.schedule === 'string' ? JSON.parse(data.schedule) : data.schedule || [];
           } catch(e) { parsedSchedule = []; }
 
-          // 👇 Парсим галерею (безопасно)
           let parsedGallery = [];
           try {
              parsedGallery = typeof data.gallery === 'string' ? JSON.parse(data.gallery) : data.gallery || [];
@@ -62,7 +62,8 @@ export function MasterProfilePage() {
             phone: data.phone || "",
             description: data.description || "",
             photo_url: data.photo_url || "",
-            gallery: Array.isArray(parsedGallery) ? parsedGallery : [], // Убеждаемся, что это массив
+            instagram_url: data.instagram_url || "", // <--- Читаем из БД
+            gallery: Array.isArray(parsedGallery) ? parsedGallery : [],
             schedule: parsedSchedule,
             slot_step: data.slot_step || 30
           });
@@ -73,7 +74,6 @@ export function MasterProfilePage() {
     }
   }, [salonId]);
 
-  // Загрузка АВАТАРА (Главное фото)
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploading(true);
@@ -90,14 +90,12 @@ export function MasterProfilePage() {
     }
   };
 
-  // 👇 Загрузка фото в ПОРТФОЛИО
   const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setGalleryUploading(true);
     try {
       const file = e.target.files[0];
       const url = await uploadImage(file);
-      // Добавляем новое фото к существующим
       setFormData(prev => ({ ...prev, gallery: [...prev.gallery, url] }));
       toast.success("Фото добавлено в портфолио");
     } catch (error) {
@@ -108,7 +106,6 @@ export function MasterProfilePage() {
     }
   };
 
-  // 👇 Удаление фото из портфолио
   const removeGalleryPhoto = (index: number) => {
       setFormData(prev => ({
           ...prev,
@@ -132,7 +129,8 @@ export function MasterProfilePage() {
         phone: formData.phone,
         description: formData.description,
         photo_url: formData.photo_url,
-        gallery: formData.gallery, // 👈 Отправляем массив фото
+        instagram_url: formData.instagram_url, // <--- Отправляем на бэкенд
+        gallery: formData.gallery,
         schedule: JSON.stringify(formData.schedule),
         slot_step: formData.slot_step
       };
@@ -150,7 +148,6 @@ export function MasterProfilePage() {
     }
   };
 
-  // Вспомогательные функции
   const toggleDay = (dayName: string) => {
     if (!isEditing) return;
     setFormData(prev => ({ ...prev, schedule: prev.schedule.map(d => d.day === dayName ? { ...d, isWorking: !d.isWorking } : d) }));
@@ -224,7 +221,7 @@ export function MasterProfilePage() {
 
       <div className="px-5 space-y-7">
 
-        {/* 👇 НОВАЯ СЕКЦИЯ: ПОРТФОЛИО */}
+        {/* СЕКЦИЯ: ПОРТФОЛИО */}
         <section className="space-y-2">
             <h2 className="text-[12px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Портфолио работ</h2>
             <div className="bg-white rounded-[16px] p-4 shadow-sm border border-slate-100">
@@ -270,7 +267,7 @@ export function MasterProfilePage() {
         <div className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 flex items-center gap-1.5">
-              <Globe size={14} className="text-[#5856D6]" /> Название салона
+              <Globe size={14} className="text-[#5856D6]" /> Название бизнеса
             </label>
             <div className={fieldContainerClass(isEditing)}>
               <input
@@ -308,6 +305,22 @@ export function MasterProfilePage() {
                 value={formData.phone}
                 onChange={val => setFormData({ ...formData, phone: val })}
                 className="border-none shadow-none h-auto p-0 text-[17px] font-medium focus-visible:ring-0 caret-[#007AFF] disabled:text-black opacity-100"
+              />
+            </div>
+          </div>
+
+          {/* 👇 ПОЛЕ INSTAGRAM */}
+          <div className="space-y-1.5">
+            <label className="text-[12px] font-bold text-[#8E8E93] uppercase ml-1 flex items-center gap-1.5">
+              <Instagram size={14} className="text-[#E1306C]" /> Instagram
+            </label>
+            <div className={fieldContainerClass(isEditing)}>
+              <input
+                disabled={!isEditing}
+                placeholder="Ссылка или @username"
+                value={formData.instagram_url}
+                onChange={e => setFormData({ ...formData, instagram_url: e.target.value })}
+                className="w-full px-4 py-3 bg-transparent text-[17px] font-medium outline-none caret-[#E1306C] disabled:text-black opacity-100 placeholder:text-[#C7C7CC]"
               />
             </div>
           </div>

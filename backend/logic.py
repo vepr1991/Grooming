@@ -1,7 +1,7 @@
 import hmac
 import hashlib
 import json
-import pytz  # <--- Добавлена библиотека для часовых поясов
+import pytz
 from urllib.parse import unquote
 from datetime import datetime, timedelta, timezone
 from fastapi import Header, HTTPException
@@ -80,11 +80,25 @@ def send_telegram_notification_task(salon_id: str, data: BookingRequest, start_d
         chat_id = res.data.get("telegram_chat_id")
 
         services_list = ", ".join([s.title for s in data.services])
-        pet_info = f"{data.pet.name}" + (f" ({data.pet.petBreed})" if data.pet.petBreed else "")
 
-        msg = (f"🔔 <b>Новая запись в {res.data.get('name')}!</b>\n\n👤 <b>Клиент:</b> {data.client.name}\n"
-               f"📞 <b>Тел:</b> {data.client.phone}\n🐶 <b>Питомец:</b> {pet_info}\n✂️ <b>Услуги:</b> {services_list}\n"
-               f"📅 <b>Дата:</b> {start_dt.strftime('%d.%m.%Y')}\n⏰ <b>Время:</b> {start_dt.strftime('%H:%M')}")
+        # ИЗМЕНЕНИЕ: Динамическое построение дополнительных полей на основе metadata
+        extra_info_lines = []
+        meta = data.metadata or {}
+
+        if meta.get("petName"):
+            breed_str = f" ({meta.get('petBreed')})" if meta.get("petBreed") else ""
+            extra_info_lines.append(f"🐶 <b>Питомец:</b> {meta.get('petName')}{breed_str}")
+
+        extra_info_str = "\n".join(extra_info_lines) + "\n" if extra_info_lines else ""
+
+        msg = (f"🔔 <b>Новая запись в {res.data.get('name')}!</b>\n\n"
+               f"👤 <b>Клиент:</b> {data.client.name}\n"
+               f"📞 <b>Тел:</b> {data.client.phone}\n"
+               f"{extra_info_str}"  # Пустая строка, если это салон маникюра
+               f"✂️ <b>Услуги:</b> {services_list}\n"
+               f"📅 <b>Дата:</b> {start_dt.strftime('%d.%m.%Y')}\n"
+               f"⏰ <b>Время:</b> {start_dt.strftime('%H:%M')}")
+
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("Открыть админку", web_app=types.WebAppInfo(
             url="https://grooming-react-front.onrender.com/master")))
@@ -127,20 +141,12 @@ def send_client_notification(appointment_id: str, status_type: str):
 async def check_upcoming_appointments():
     logger.info("⏰ Checking for reminders...")
     try:
-        # --- ИСПРАВЛЕНИЕ ЧАСОВОГО ПОЯСА ---
-        # Устанавливаем таймзону (например, Алматы UTC+5)
         tz_local = pytz.timezone("Asia/Almaty")
-        
-        # Получаем текущее время в этой таймзоне
         now_local = datetime.now(tz_local)
-        
-        # Рассчитываем окно времени: от 55 до 65 минут вперед
+
         target_time_start = now_local + timedelta(minutes=55)
         target_time_end = now_local + timedelta(minutes=65)
 
-        # Делаем запрос к базе
-        # Важно: Supabase может хранить время в UTC или как строку.
-        # Передавая ISO с оффсетом (+05:00), мы помогаем базе понять точное время.
         response = supabase.table("appointments") \
             .select("*, salons(name, phone), services(title)") \
             .eq("status", "confirmed") \
@@ -148,14 +154,14 @@ async def check_upcoming_appointments():
             .gte("start_time", target_time_start.isoformat()) \
             .lte("start_time", target_time_end.isoformat()) \
             .execute()
-            
+
         appointments = response.data or []
-        
+
         for appt in appointments:
             try:
                 tg_user_raw = appt.get("client_tg_user")
                 if not tg_user_raw: continue
-                
+
                 tg_user = json.loads(tg_user_raw) if isinstance(tg_user_raw, str) else tg_user_raw
                 client_id = tg_user.get("id")
 
@@ -165,27 +171,23 @@ async def check_upcoming_appointments():
                 elif appt.get('services'):
                     svc_title = appt['services']['title']
 
-                # Парсим время из базы. replace("Z", "+00:00") нужен для корректной обработки UTC метки
                 start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
-                # Переводим отображаемое время в локальный часовой пояс для пользователя (опционально, но желательно)
                 start_dt_local = start_dt.astimezone(tz_local)
-                
+
                 time_str = start_dt_local.strftime('%H:%M')
-                
+
                 msg = (
                     f"⏰ <b>Напоминание!</b>\n\n"
                     f"Через час ({time_str}) у вас запись в <b>{appt['salons']['name']}</b>.\n"
                     f"✂️ {svc_title}\n\n"
                     f"<i>Ждем вас!</i>"
                 )
-                
+
                 bot.send_message(client_id, msg, parse_mode="HTML")
-                
-                # --- ВАЖНО: Обновляем статус, чтобы не спамить ---
                 supabase.table("appointments").update({"reminder_sent": True}).eq("id", appt['id']).execute()
-                
+
             except Exception as e:
                 logger.error(f"Reminder error: {e}")
-                
+
     except Exception as e:
         logger.error(f"Scheduler error: {e}")
