@@ -8,7 +8,8 @@ import {
   Sparkles,
   Timer,
   Scissors,
-  CheckCircle2
+  CheckCircle2,
+  Loader2
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,12 +18,12 @@ import { PhoneInput } from "@/components/ui/phone-input";
 // 👇 URL ТВОЕГО БЕКЕНДА
 const BACKEND_URL = "https://grooming-tma.onrender.com";
 
-export function MasterRegisterPage() {
+export function MasterRegisterPage() { // Если у тебя экспорт RegisterPage, переименуй
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  // Данные из твоего старого файла + новые настройки
+  // Данные формы
   const [formData, setFormData] = useState({
     name: "",
     address: "",
@@ -45,8 +46,8 @@ export function MasterRegisterPage() {
         telegramName: tgUser.first_name
       }));
     } else {
-      // ДЛЯ ТЕСТОВ (можно удалить потом)
-      // setFormData(prev => ({ ...prev, telegramId: 12345, telegramName: "Тест" }));
+      // Для тестов в браузере (раскомментируй при необходимости)
+      // setFormData(prev => ({ ...prev, telegramId: 12345, telegramName: "Test" }));
     }
   }, []);
 
@@ -100,11 +101,15 @@ export function MasterRegisterPage() {
 
       localStorage.setItem("salon_id", salon.id);
       toast.success("Салон успешно создан! 🚀", { id: toastId });
-      navigate("/master");
+
+      // 👇 ВАЖНО: Делаем полную перезагрузку, чтобы AuthCheck увидел новый статус
+      // и показал экран "Ожидание проверки" (pending_approval)
+      setTimeout(() => {
+          window.location.href = "/";
+      }, 1000);
 
     } catch (err: any) {
       toast.error("Ошибка: " + err.message, { id: toastId });
-    } finally {
       setLoading(false);
     }
   };
@@ -175,10 +180,10 @@ export function MasterRegisterPage() {
             </div>
 
             {!formData.telegramId ? (
-              <div className="p-4 bg-red-50 rounded-2xl border border-red-100 flex items-start gap-3">
+              <div className="p-4 bg-red-50 rounded-2xl border border-red-100 flex items-start gap-3 mt-4">
                 <div className="text-red-500 font-bold mt-0.5">⚠️</div>
                 <p className="text-[13px] text-red-600 leading-snug">
-                  <b>Ошибка доступа.</b> Пожалуйста, откройте это приложение через Telegram-бота, чтобы мы могли привязать ваш аккаунт.
+                  <b>Ошибка доступа.</b> Откройте приложение через Telegram.
                 </p>
               </div>
             ) : (
@@ -289,7 +294,7 @@ export function MasterRegisterPage() {
               disabled={loading || !formData.firstService.title}
               className="w-full py-4 bg-[#34C759] text-white rounded-[18px] font-extrabold text-[17px] flex items-center justify-center gap-2 shadow-xl shadow-green-100 active:scale-95 transition-all mt-4 disabled:opacity-50"
             >
-              {loading ? "Запускаем..." : <><Sparkles size={20} /> Открыть салон</>}
+              {loading ? <Loader2 className="animate-spin" /> : <><Sparkles size={20} /> Открыть салон</>}
             </button>
           </div>
         )}
