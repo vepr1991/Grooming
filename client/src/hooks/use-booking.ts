@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 export type Salon = {
   id: string;
   name: string;
+  niche: string; // <--- ДОБАВИЛИ НИШУ
   address: string;
   phone: string;
   photo_url: string;
@@ -97,20 +98,16 @@ export function useBusySlots(salonId: string | undefined, date: Date) {
 
 // 4. Мутация создания записи (С АВТО-ОБНОВЛЕНИЕМ)
 export function useCreateBooking() {
-    const queryClient = useQueryClient(); // 👈 1. Получаем доступ к клиенту React Query
+    const queryClient = useQueryClient();
 
     return useMutation({
         mutationFn: async (payload: any) => {
             return await api.createBooking(payload);
         },
         onSuccess: (_, variables) => {
-            // 👈 2. При успехе сбрасываем кэш слотов!
-            // Это заставит useBusySlots перезапросить данные с сервера
             queryClient.invalidateQueries({
                 queryKey: ['slots', variables.salonId]
             });
-
-            // Также можно обновить список клиентов для админки, если нужно
             queryClient.invalidateQueries({
                 queryKey: ['salonClients']
             });

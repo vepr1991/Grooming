@@ -35,6 +35,7 @@ async def register_salon(p: SalonCreate):
         "slug": f"s_{p.telegram_chat_id}_{int(time.time())}",
         "is_active": True,
         "is_approved": False,
+        "niche": p.niche,  # <--- ИЗМЕНЕНИЕ: Сохраняем нишу в БД
         "schedule": json.dumps(
             [{"day": d, "isWorking": d not in ["Сб", "Вс"], "hours": {"start": "10:00", "end": "20:00"}} for d in
              ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]])
@@ -42,13 +43,35 @@ async def register_salon(p: SalonCreate):
     res = supabase.table("salons").insert(new_s).execute()
     new_salon = res.data[0]
 
+    # --- ОНБОРДИНГ: Автоматическое создание услуг-шаблонов ---
+    default_services = []
+    if p.niche == "beauty":
+        default_services = [
+            {"title": "Маникюр + Гель-лак", "price": 6000, "duration_minutes": 120, "salon_id": new_salon['id'],
+             "is_active": True},
+            {"title": "Снятие чужого покрытия", "price": 1000, "duration_minutes": 15, "salon_id": new_salon['id'],
+             "is_active": True}
+        ]
+    elif p.niche == "grooming":
+        default_services = [
+            {"title": "Комплексная стрижка", "price": 8000, "duration_minutes": 90, "salon_id": new_salon['id'],
+             "is_active": True},
+            {"title": "Гигиена", "price": 4000, "duration_minutes": 60, "salon_id": new_salon['id'], "is_active": True}
+        ]
+
+    if default_services:
+        supabase.table("services").insert(default_services).execute()
+
     # Уведомление админа
     if ADMIN_CHAT_ID:
         try:
             markup = types.InlineKeyboardMarkup()
             markup.row(types.InlineKeyboardButton("✅ Одобрить", callback_data=f"approve_{new_salon['id']}"),
                        types.InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{new_salon['id']}"))
-            msg = f"🚨 <b>Новая регистрация!</b>\n\n👤 {new_salon['name']}\n📍 {new_salon.get('address')}\n📞 {new_salon.get('phone')}"
+
+            # ИЗМЕНЕНИЕ: Добавляем отображение ниши в админское сообщение
+            niche_icon = "💅 Бьюти" if p.niche == "beauty" else "🐶 Груминг"
+            msg = f"🚨 <b>Новая регистрация!</b>\n\n👤 {new_salon['name']}\n📍 {new_salon.get('address')}\n📞 {new_salon.get('phone')}\n🏷 Ниша: {niche_icon}"
             bot.send_message(ADMIN_CHAT_ID, msg, parse_mode="HTML", reply_markup=markup)
         except Exception as e:
             logger.error(f"Admin notify error: {e}")

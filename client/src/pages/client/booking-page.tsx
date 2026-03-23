@@ -56,6 +56,9 @@ export function ClientBookingPage() {
   // 5. ЗАГРУЗКА ЗАНЯТЫХ СЛОТОВ
   const { data: busySlots = [], isLoading: isSlotsLoading } = useBusySlots(salonId, selectedDate);
 
+  // ОПРЕДЕЛЯЕМ НИШУ
+  const isGrooming = salon?.niche !== 'beauty';
+
   // === ЭФФЕКТ: КНОПКА НАЗАД В TELEGRAM ===
   useEffect(() => {
       // @ts-ignore
@@ -131,6 +134,12 @@ export function ClientBookingPage() {
     if (!selectedTime || !salonId) return;
 
     try {
+      // ИЗМЕНЕНИЕ: Динамически формируем метаданные
+      const metadataParams = isGrooming ? {
+          petName: formData.petName,
+          petBreed: formData.petBreed
+      } : {};
+
       await createBookingMutation.mutateAsync({
         salonId,
         services: selectedServices,
@@ -141,15 +150,15 @@ export function ClientBookingPage() {
           phone: formData.phone,
           telegram_user: tgUser || null
         },
-        pet: { name: formData.petName, petBreed: formData.petBreed }
+        metadata: metadataParams // <--- Отправляем новый JSON
       });
 
       // 💾 СОХРАНЯЕМ ДАННЫЕ В ПАМЯТЬ
       localStorage.setItem('client_info', JSON.stringify({
           name: formData.name,
           phone: formData.phone,
-          petName: formData.petName,
-          petBreed: formData.petBreed
+          petName: isGrooming ? formData.petName : "",
+          petBreed: isGrooming ? formData.petBreed : ""
       }));
 
       setStep('success');
@@ -159,6 +168,9 @@ export function ClientBookingPage() {
       toast.error(err.message || "Ошибка при записи");
     }
   };
+
+  // Валидация кнопки (для Бьюти кличка не нужна)
+  const isFormValid = formData.agreed && formData.phone && (!isGrooming || formData.petName);
 
   if ((isSalonLoading || isServicesLoading) && step !== 'success') {
     return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader2 className="animate-spin text-[#007AFF]" size={32}/></div>;
@@ -331,10 +343,14 @@ export function ClientBookingPage() {
                   <p className="text-[10px] font-black text-[#8E8E93] uppercase mb-1 ml-1">Телефон</p>
                   <PhoneInput value={formData.phone} onChange={val => setFormData({...formData, phone: val})} className="border-none shadow-none h-auto p-0 text-[17px] font-bold caret-[#007AFF]" />
                </div>
-               <div className="grid grid-cols-2 gap-3">
-                  <InputBlock label="Кличка" value={formData.petName} onChange={(v: string) => setFormData({...formData, petName: v})} placeholder="Арчи" />
-                  <InputBlock label="Порода" value={formData.petBreed} onChange={(v: string) => setFormData({...formData, petBreed: v})} placeholder="Шпиц" />
-               </div>
+
+               {/* ИЗМЕНЕНИЕ: Скрываем собак, если это маникюр */}
+               {isGrooming && (
+                   <div className="grid grid-cols-2 gap-3">
+                      <InputBlock label="Кличка" value={formData.petName} onChange={(v: string) => setFormData({...formData, petName: v})} placeholder="Арчи" />
+                      <InputBlock label="Порода" value={formData.petBreed} onChange={(v: string) => setFormData({...formData, petBreed: v})} placeholder="Шпиц" />
+                   </div>
+               )}
 
                <div className="flex items-center gap-3 p-4 bg-white rounded-[20px] border border-slate-100 shadow-sm" onClick={() => setFormData({...formData, agreed: !formData.agreed})}>
                   <div className={`w-6 h-6 rounded-[8px] border-2 flex items-center justify-center transition-all ${formData.agreed ? 'bg-[#34C759] border-[#34C759]' : 'border-slate-200'}`}>
@@ -345,9 +361,9 @@ export function ClientBookingPage() {
             </div>
 
             <button
-              disabled={!formData.agreed || !formData.phone || !formData.petName || createBookingMutation.isPending}
+              disabled={!isFormValid || createBookingMutation.isPending}
               onClick={handleFinish}
-              className={`w-full py-4 rounded-[20px] font-black text-[17px] shadow-xl transition-all ${formData.agreed && formData.phone && formData.petName ? 'bg-[#34C759] text-white active:scale-95 shadow-green-100' : 'bg-slate-200 text-[#8E8E93] cursor-not-allowed'}`}
+              className={`w-full py-4 rounded-[20px] font-black text-[17px] shadow-xl transition-all ${isFormValid ? 'bg-[#34C759] text-white active:scale-95 shadow-green-100' : 'bg-slate-200 text-[#8E8E93] cursor-not-allowed'}`}
             >
               {createBookingMutation.isPending ? <Loader2 className="animate-spin mx-auto"/> : `Записаться (${totalAmount} ₸)`}
             </button>

@@ -27,8 +27,11 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
         "client_name": data.client.name,
         "client_phone": data.client.phone,
         "client_tg_user": json.dumps(data.client.telegram_user),
-        "pet_name": data.pet.name,
-        "pet_breed": data.pet.petBreed,
+        # ИЗМЕНЕНИЕ: Сохраняем универсальные метаданные (включая собаку, если она есть)
+        "metadata": data.metadata,
+        # Оставляем пустые строки для старых колонок, чтобы не рушить структуру базы до полного перехода
+        "pet_name": data.metadata.get("petName", ""),
+        "pet_breed": data.metadata.get("petBreed", ""),
         "start_time": start_dt.isoformat(),
         "end_time": end_dt.isoformat(),
         "status": "pending",
@@ -88,8 +91,9 @@ async def get_salon_clients(salon_id: str, tg_user_id: Optional[int] = Depends(v
                 clients_dict[phone] = {
                     "name": app['client_name'],
                     "phone": phone,
-                    "pet_name": app['pet_name'],
-                    "pet_breed": app['pet_breed'],
+                    "metadata": app.get('metadata', {}), # ИЗМЕНЕНИЕ: отдаем фронтенду новые данные
+                    "pet_name": app.get('pet_name'), # Поддержка старых записей
+                    "pet_breed": app.get('pet_breed'),
                     "total_visits": 0,
                     "last_visit": app['start_time'],
                     "tg_user": app.get('client_tg_user')
