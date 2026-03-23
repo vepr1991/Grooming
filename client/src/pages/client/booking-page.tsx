@@ -23,6 +23,31 @@ export function ClientBookingPage() {
   const { data: services = [], isLoading: isServicesLoading } = useServices(salonId);
   const createBookingMutation = useCreateBooking();
 
+  // 👇 ДОБАВЛЯЕМ ЭТОТ БЛОК: Сохраняем салон в историю посещений
+  useEffect(() => {
+    if (salon) {
+      try {
+        const history = JSON.parse(localStorage.getItem('visited_salons') || '[]');
+        // Удаляем этот салон, если он уже был в списке (чтобы поднять его на 1 место)
+        const filtered = history.filter((s: any) => s.id !== salon.id);
+
+        // Добавляем салон на самый верх списка
+        filtered.unshift({
+          id: salon.id,
+          name: salon.name,
+          niche: salon.niche,
+          photo_url: salon.photo_url
+        });
+
+        // Сохраняем в память (оставляем только 5 последних, чтобы не засорять память)
+        localStorage.setItem('visited_salons', JSON.stringify(filtered.slice(0, 5)));
+      } catch (e) {
+        console.error("Ошибка сохранения истории салонов", e);
+      }
+    }
+  }, [salon]);
+  // 👆 КОНЕЦ БЛОКА
+
   // 2. СОСТОЯНИЕ UI
   const [step, setStep] = useState<Step>('showcase');
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -153,13 +178,14 @@ export function ClientBookingPage() {
         metadata: metadataParams
       });
 
-      // 💾 УМНОЕ СОХРАНЕНИЕ В ПАМЯТЬ
+      // 💾 УМНОЕ СОХРАНЕНИЕ В ПАМЯТЬ (не стираем старые данные из других ниш)
       const existingData = JSON.parse(localStorage.getItem('client_info') || '{}');
 
       localStorage.setItem('client_info', JSON.stringify({
           ...existingData,
           name: formData.name,
           phone: formData.phone,
+          // Обновляем данные питомца ТОЛЬКО если это груминг
           ...(isGrooming && {
               petName: formData.petName,
               petBreed: formData.petBreed
@@ -219,7 +245,7 @@ export function ClientBookingPage() {
                 </div>
             )}
 
-            {/* 👇 НОВАЯ КНОПКА INSTAGRAM */}
+            {/* 👇 КНОПКА INSTAGRAM */}
             {salon.instagram_url && (
                 <div className="px-5 pt-4">
                     <a
