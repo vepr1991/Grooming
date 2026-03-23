@@ -14,6 +14,7 @@ export type Salon = {
   schedule: any[];
   gallery: string[];
   slot_step: number;
+  instagram_url?: string;
 };
 
 export type Service = {

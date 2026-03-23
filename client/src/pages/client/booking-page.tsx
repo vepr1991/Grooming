@@ -4,7 +4,7 @@ import { format, addDays, isSameDay, isBefore, parse, addMinutes, startOfToday }
 import { ru } from "date-fns/locale";
 import {
   ChevronLeft, ChevronRight, MapPin, Clock, CheckCircle2,
-  Loader2, Image as ImageIcon, X, Check, Calendar, Wallet
+  Loader2, Image as ImageIcon, X, Check, Calendar, Wallet, Instagram
 } from "lucide-react";
 import { toast } from "sonner";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -153,14 +153,13 @@ export function ClientBookingPage() {
         metadata: metadataParams
       });
 
-      // 💾 УМНОЕ СОХРАНЕНИЕ В ПАМЯТЬ (не стираем старые данные из других ниш)
+      // 💾 УМНОЕ СОХРАНЕНИЕ В ПАМЯТЬ
       const existingData = JSON.parse(localStorage.getItem('client_info') || '{}');
 
       localStorage.setItem('client_info', JSON.stringify({
           ...existingData,
           name: formData.name,
           phone: formData.phone,
-          // Обновляем данные питомца ТОЛЬКО если это груминг
           ...(isGrooming && {
               petName: formData.petName,
               petBreed: formData.petBreed
@@ -220,10 +219,24 @@ export function ClientBookingPage() {
                 </div>
             )}
 
+            {/* 👇 НОВАЯ КНОПКА INSTAGRAM */}
+            {salon.instagram_url && (
+                <div className="px-5 pt-4">
+                    <a
+                       href={salon.instagram_url.startsWith('http') ? salon.instagram_url : `https://instagram.com/${salon.instagram_url.replace('@', '')}`}
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       className="flex items-center justify-center gap-2 w-full py-3.5 bg-gradient-to-r from-[#f09433] via-[#dc2743] to-[#bc1888] text-white rounded-[16px] font-bold text-[15px] shadow-md active:scale-95 transition-all"
+                    >
+                        <Instagram size={18} /> Посмотреть работы в Instagram
+                    </a>
+                </div>
+            )}
+
             {salon.gallery?.length > 0 && (
                <div className="p-5 pb-0 space-y-3">
                    <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 flex items-center gap-2">
-                       <ImageIcon size={14}/> Наши работы
+                       <ImageIcon size={14}/> Портфолио
                    </h3>
                    <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-5 px-5 snap-x">
                        {salon.gallery.map((img: string, i: number) => (

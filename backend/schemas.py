@@ -63,6 +63,7 @@ class SalonUpdate(BaseModel):
     photo_url: Optional[str] = None
     gallery: Optional[List[str]] = None
     slot_step: Optional[int] = None
+    instagram_url: Optional[str] = None
 
 # --- УСЛУГИ (СОЗДАНИЕ/РЕДАКТИРОВАНИЕ) ---
 class ServiceCreate(BaseModel):
