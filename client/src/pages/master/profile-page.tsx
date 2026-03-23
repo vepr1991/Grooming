@@ -7,7 +7,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { api } from "@/lib/api";
 import { uploadImage } from "@/lib/upload";
 
-const BOT_USERNAME = "pet_groom_bot";
+const BOT_USERNAME = "easybookapp_bot";
 const APP_NAME = "app";
 
 type ScheduleDay = {
