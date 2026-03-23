@@ -14,7 +14,7 @@ from routers import master, bookings
 def h_start(m):
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(telebot.types.InlineKeyboardButton("🚀 Открыть приложение", web_app=telebot.types.WebAppInfo(
-        "https://grooming-tma.onrender.com")))
+        "https://grooming-react-front.onrender.com")))
     bot.reply_to(m, f"Привет! Я бот для записи на груминг.\nЖми кнопку ниже 👇", reply_markup=markup)
 
 
