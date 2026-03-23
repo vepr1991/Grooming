@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { api } from "@/lib/api";
 
@@ -95,11 +95,25 @@ export function useBusySlots(salonId: string | undefined, date: Date) {
     });
 }
 
-// 4. Мутация создания записи
+// 4. Мутация создания записи (С АВТО-ОБНОВЛЕНИЕМ)
 export function useCreateBooking() {
+    const queryClient = useQueryClient(); // 👈 1. Получаем доступ к клиенту React Query
+
     return useMutation({
         mutationFn: async (payload: any) => {
             return await api.createBooking(payload);
+        },
+        onSuccess: (_, variables) => {
+            // 👈 2. При успехе сбрасываем кэш слотов!
+            // Это заставит useBusySlots перезапросить данные с сервера
+            queryClient.invalidateQueries({
+                queryKey: ['slots', variables.salonId]
+            });
+
+            // Также можно обновить список клиентов для админки, если нужно
+            queryClient.invalidateQueries({
+                queryKey: ['salonClients']
+            });
         }
     });
 }
