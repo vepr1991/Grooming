@@ -23,15 +23,13 @@ export function ClientBookingPage() {
   const { data: services = [], isLoading: isServicesLoading } = useServices(salonId);
   const createBookingMutation = useCreateBooking();
 
-  // 👇 ДОБАВЛЯЕМ ЭТОТ БЛОК: Сохраняем салон в историю посещений
+  // Сохраняем салон в историю посещений
   useEffect(() => {
     if (salon) {
       try {
         const history = JSON.parse(localStorage.getItem('visited_salons') || '[]');
-        // Удаляем этот салон, если он уже был в списке (чтобы поднять его на 1 место)
         const filtered = history.filter((s: any) => s.id !== salon.id);
 
-        // Добавляем салон на самый верх списка
         filtered.unshift({
           id: salon.id,
           name: salon.name,
@@ -39,14 +37,12 @@ export function ClientBookingPage() {
           photo_url: salon.photo_url
         });
 
-        // Сохраняем в память (оставляем только 5 последних, чтобы не засорять память)
         localStorage.setItem('visited_salons', JSON.stringify(filtered.slice(0, 5)));
       } catch (e) {
         console.error("Ошибка сохранения истории салонов", e);
       }
     }
   }, [salon]);
-  // 👆 КОНЕЦ БЛОКА
 
   // 2. СОСТОЯНИЕ UI
   const [step, setStep] = useState<Step>('showcase');
@@ -62,7 +58,6 @@ export function ClientBookingPage() {
   const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
 
   const [formData, setFormData] = useState(() => {
-    // 🧠 Пытаемся достать данные из прошлого визита
     try {
         const saved = localStorage.getItem('client_info');
         const parsed = saved ? JSON.parse(saved) : {};
@@ -81,7 +76,6 @@ export function ClientBookingPage() {
   // 5. ЗАГРУЗКА ЗАНЯТЫХ СЛОТОВ
   const { data: busySlots = [], isLoading: isSlotsLoading } = useBusySlots(salonId, selectedDate);
 
-  // ОПРЕДЕЛЯЕМ НИШУ
   const isGrooming = salon?.niche !== 'beauty';
 
   // === ЭФФЕКТ: КНОПКА НАЗАД В TELEGRAM ===
@@ -159,7 +153,6 @@ export function ClientBookingPage() {
     if (!selectedTime || !salonId) return;
 
     try {
-      // Динамически формируем метаданные
       const metadataParams = isGrooming ? {
           petName: formData.petName,
           petBreed: formData.petBreed
@@ -178,14 +171,11 @@ export function ClientBookingPage() {
         metadata: metadataParams
       });
 
-      // 💾 УМНОЕ СОХРАНЕНИЕ В ПАМЯТЬ (не стираем старые данные из других ниш)
       const existingData = JSON.parse(localStorage.getItem('client_info') || '{}');
-
       localStorage.setItem('client_info', JSON.stringify({
           ...existingData,
           name: formData.name,
           phone: formData.phone,
-          // Обновляем данные питомца ТОЛЬКО если это груминг
           ...(isGrooming && {
               petName: formData.petName,
               petBreed: formData.petBreed
@@ -200,7 +190,6 @@ export function ClientBookingPage() {
     }
   };
 
-  // Валидация кнопки (для Бьюти кличка не нужна)
   const isFormValid = formData.agreed && formData.phone && (!isGrooming || formData.petName);
 
   if ((isSalonLoading || isServicesLoading) && step !== 'success') {
@@ -208,6 +197,16 @@ export function ClientBookingPage() {
   }
 
   const totalAmount = selectedServices.reduce((sum, s) => sum + s.price, 0);
+
+  // 👇 ИЗМЕНЕНИЕ: Умная обработка адреса (ищем ссылку внутри текста)
+  let addressUrl = "";
+  let displayAddress = "";
+  if (salon?.address) {
+      const addressUrlMatch = salon.address.match(/(https?:\/\/[^\s]+)/);
+      addressUrl = addressUrlMatch ? addressUrlMatch[0] : `https://2gis.kz/search/${encodeURIComponent(salon.address)}`;
+      // Убираем ссылку из текста, чтобы было красиво
+      displayAddress = salon.address.replace(/(https?:\/\/[^\s]+)/g, '').trim() || salon.address;
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-[#F2F2F7] max-w-md mx-auto overflow-x-hidden font-sans pb-24">
@@ -234,15 +233,15 @@ export function ClientBookingPage() {
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-6">
                 <h2 className="text-white text-2xl font-extrabold tracking-tight">{salon.name}</h2>
                 <div className="flex items-center text-white/90 text-[13px] mt-1 gap-1 font-medium">
-                  <MapPin size={14} className="text-[#007AFF]" />
-                  {/* 👇 ИЗМЕНЕНИЕ: Добавлена кликабельная ссылка на 2ГИС */}
+                  <MapPin size={14} className="text-[#007AFF] shrink-0" />
+                  {/* 👇 ИЗМЕНЕНИЕ: Используем умную ссылку */}
                   <a
-                    href={`https://2gis.kz/search/${encodeURIComponent(salon.address)}`}
+                    href={addressUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="hover:underline active:opacity-70 transition-opacity"
+                    className="hover:underline active:opacity-70 transition-opacity line-clamp-2"
                   >
-                    {salon.address}
+                    {displayAddress}
                   </a>
                 </div>
               </div>
