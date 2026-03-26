@@ -234,7 +234,16 @@ export function ClientBookingPage() {
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-6">
                 <h2 className="text-white text-2xl font-extrabold tracking-tight">{salon.name}</h2>
                 <div className="flex items-center text-white/90 text-[13px] mt-1 gap-1 font-medium">
-                  <MapPin size={14} className="text-[#007AFF]" /> {salon.address}
+                  <MapPin size={14} className="text-[#007AFF]" />
+                  {/* 👇 ИЗМЕНЕНИЕ: Добавлена кликабельная ссылка на 2ГИС */}
+                  <a
+                    href={`https://2gis.kz/search/${encodeURIComponent(salon.address)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline active:opacity-70 transition-opacity"
+                  >
+                    {salon.address}
+                  </a>
                 </div>
               </div>
             </div>
@@ -245,7 +254,7 @@ export function ClientBookingPage() {
                 </div>
             )}
 
-            {/* 👇 КНОПКА INSTAGRAM */}
+            {/* КНОПКА INSTAGRAM */}
             {salon.instagram_url && (
                 <div className="px-5 pt-4">
                     <a
