@@ -32,8 +32,9 @@ type Appointment = {
   client_name: string;
   client_phone: string;
   client_tg_user?: string | any;
-  // ИЗМЕНЕНИЕ: Заменяем старые поля на универсальные метаданные
   metadata?: any;
+  pet_name?: string;
+  pet_breed?: string;
   start_time: string;
   end_time: string;
   status: 'pending' | 'confirmed' | 'completed' | 'canceled' | 'blocked';
@@ -61,13 +62,13 @@ export function MasterDashboardPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [salonNiche, setSalonNiche] = useState<string>('beauty'); // 👈 ИЗМЕНЕНИЕ: Стейт для ниши
 
   // Modals state
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingBlock, setIsAddingBlock] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Состояние для ID удаляемого блока
   const [blockToDelete, setBlockToDelete] = useState<string | null>(null);
 
   const [newApp, setNewApp] = useState({
@@ -81,6 +82,12 @@ export function MasterDashboardPage() {
   const loadAllData = () => {
     fetchAppointments();
     if (view === 'stats') fetchStats();
+  };
+
+  const fetchSalonData = async () => {
+    if (!salonId) return;
+    const { data } = await supabase.from('salons').select('niche').eq('id', salonId).single();
+    if (data) setSalonNiche(data.niche);
   };
 
   const fetchAppointments = async () => {
@@ -107,7 +114,12 @@ export function MasterDashboardPage() {
     } catch (e) { console.error(e); }
   };
 
-  useEffect(() => { fetchServices(); fetchAppointments(); }, [salonId]);
+  useEffect(() => {
+    fetchSalonData(); // Загружаем нишу
+    fetchServices();
+    fetchAppointments();
+  }, [salonId]);
+
   useEffect(() => { if (view === 'stats') fetchStats(); }, [view]);
 
   const confirmDeleteBlock = async () => {
@@ -151,8 +163,9 @@ export function MasterDashboardPage() {
         const selectedS = services.find(s => s.id === newApp.service_id);
         if (!selectedS) return;
 
-        // ИЗМЕНЕНИЕ: Формируем metadata для ручной записи (если мастер ввел кличку)
-        const metadataParams = newApp.pet_name ? { petName: newApp.pet_name, petBreed: newApp.pet_breed } : {};
+        const metadataParams = (salonNiche === 'grooming' && newApp.pet_name)
+             ? { petName: newApp.pet_name, petBreed: newApp.pet_breed }
+             : {};
 
         await api.createBooking({
             salonId,
@@ -160,7 +173,7 @@ export function MasterDashboardPage() {
             date: newApp.date,
             time: newApp.time,
             client: { name: newApp.client_name, phone: newApp.client_phone },
-            metadata: metadataParams // <--- Отправляем метаданные вместо pet
+            metadata: metadataParams
         });
         toast.success("Записано!");
         setIsAdding(false);
@@ -343,9 +356,19 @@ export function MasterDashboardPage() {
               <button onClick={handleManualAdd} className="font-bold text-[#007AFF]">{isSubmitting ? "..." : "Записать"}</button>
             </div>
             <div className="px-5 mt-6 space-y-4">
-               <div className="bg-white p-4 rounded-xl space-y-3"><input placeholder="Имя" className="w-full text-lg outline-none" value={newApp.client_name} onChange={e => setNewApp({...newApp, client_name: e.target.value})} /><PhoneInput value={newApp.client_phone} onChange={val => setNewApp({...newApp, client_phone: val})} /></div>
-               {/* Оставляем эти поля для ручного добавления, но они станут необязательными для сервера */}
-               <div className="grid grid-cols-2 gap-3"><input placeholder="Кличка (если есть)" className="bg-white p-3 rounded-xl outline-none text-sm" value={newApp.pet_name} onChange={e => setNewApp({...newApp, pet_name: e.target.value})} /><input placeholder="Порода" className="bg-white p-3 rounded-xl outline-none text-sm" value={newApp.pet_breed} onChange={e => setNewApp({...newApp, pet_breed: e.target.value})} /></div>
+               <div className="bg-white p-4 rounded-xl space-y-3">
+                 <input placeholder="Имя" className="w-full text-lg outline-none" value={newApp.client_name} onChange={e => setNewApp({...newApp, client_name: e.target.value})} />
+                 <PhoneInput value={newApp.client_phone} onChange={val => setNewApp({...newApp, client_phone: val})} />
+               </div>
+
+               {/* ИЗМЕНЕНИЕ: Показываем поля питомца ТОЛЬКО для салонов груминга */}
+               {salonNiche === 'grooming' && (
+                 <div className="grid grid-cols-2 gap-3">
+                   <input placeholder="Кличка (если есть)" className="bg-white p-3 rounded-xl outline-none text-sm" value={newApp.pet_name} onChange={e => setNewApp({...newApp, pet_name: e.target.value})} />
+                   <input placeholder="Порода" className="bg-white p-3 rounded-xl outline-none text-sm" value={newApp.pet_breed} onChange={e => setNewApp({...newApp, pet_breed: e.target.value})} />
+                 </div>
+               )}
+
                <select className="w-full bg-white p-3 rounded-xl outline-none" value={newApp.service_id} onChange={e => setNewApp({...newApp, service_id: e.target.value})}><option value="">Выбрать услугу</option>{services.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}</select>
                <div className="grid grid-cols-2 gap-3"><input type="date" className="p-3 rounded-xl bg-white outline-none" value={newApp.date} onChange={e => setNewApp({...newApp, date: e.target.value})} /><input type="time" className="p-3 rounded-xl bg-white outline-none" value={newApp.time} onChange={e => setNewApp({...newApp, time: e.target.value})} /></div>
             </div>
@@ -353,7 +376,7 @@ export function MasterDashboardPage() {
         </div>
       )}
 
-      {/* Модалки перерыва и удаления (без изменений) */}
+      {/* Модалки перерыва и удаления */}
       {isAddingBlock && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
             <div className="bg-white w-full max-w-sm p-6 rounded-[24px] shadow-2xl animate-in zoom-in-95">
@@ -431,9 +454,12 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
   }
   const chatLink = tgUsername ? `https://t.me/${tgUsername}` : `https://wa.me/${cleanPhone}`;
 
-  // ИЗМЕНЕНИЕ: Динамическое определение заголовка (Кличка животного или Имя клиента)
-  const displayTitle = app.metadata?.petName || app.client_name || 'Без имени';
-  const displaySubtitle = app.metadata?.petBreed ? app.metadata.petBreed : 'Клиент';
+  // ИЗМЕНЕНИЕ: Безопасно достаем имя и породу, если они есть
+  const petName = app.metadata?.petName || app.pet_name;
+  const petBreed = app.metadata?.petBreed || app.pet_breed;
+
+  const displayTitle = petName || app.client_name || 'Без имени';
+  const displaySubtitle = petName ? (petBreed || 'Питомец') : 'Клиент';
 
   return (
     <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
@@ -445,7 +471,6 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
           </div>
           <div className="w-[1px] h-8 bg-slate-100" />
           <div>
-            {/* ИЗМЕНЕНИЕ: Выводим динамический заголовок */}
             <div className="font-bold text-[15px] text-black">{displayTitle}</div>
             <div className="text-[13px] font-medium text-slate-400 mt-0.5">{sInfo?.title || 'Услуга'}</div>
           </div>
