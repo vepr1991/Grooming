@@ -131,9 +131,17 @@ def send_client_notification(appointment_id: str, status_type: str):
             f"{'✅' if status_type == 'confirmed' else '❌'} <b>Запись {'подтверждена' if status_type == 'confirmed' else 'отменена'}</b>\n\n"
             f"✂️ <b>Салон:</b> {appt['salons']['name']}\n🛠 <b>Услуги:</b> {svc_title}\n"
             f"📅 <b>Дата:</b> {start_dt.strftime('%d.%m.%Y')}\n⏰ <b>Время:</b> {start_dt.strftime('%H:%M')}")
+
         if status_type == 'confirmed' and appt['salons'].get('phone'):
             msg += f"\n\n📞 <b>Телефон:</b> {appt['salons']['phone']}"
-        bot.send_message(tg_user["id"], msg, parse_mode="HTML")
+
+        # ИЗМЕНЕНИЕ: Добавляем кнопку отмены для подтвержденных записей
+        markup = None
+        if status_type == 'confirmed':
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("❌ Отменить запись", callback_data=f"cancel_{appointment_id}"))
+
+        bot.send_message(tg_user["id"], msg, parse_mode="HTML", reply_markup=markup)
     except Exception as e:
         logger.error(f"Client notify error: {e}")
 
