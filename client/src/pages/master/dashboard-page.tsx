@@ -424,17 +424,16 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
       const bTime = parseDate(app.start_time);
       return (
         <div className="bg-[#E3E3E8] rounded-2xl border border-slate-200 p-4 flex items-center justify-between opacity-80">
-            <div className="flex items-center gap-4">
-                <div className="font-bold text-lg w-12 text-center text-[#8E8E93]">{format(bTime, 'HH:mm')}</div>
-                <div className="w-[1px] h-8 bg-slate-300" />
-                <div className="flex items-center gap-2 text-[#8E8E93] font-bold"><Coffee size={18} /> Перерыв</div>
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+                <div className="font-bold text-lg w-12 text-center text-[#8E8E93] shrink-0">{format(bTime, 'HH:mm')}</div>
+                <div className="w-[1px] h-8 bg-slate-300 shrink-0" />
+                <div className="flex items-center gap-2 text-[#8E8E93] font-bold min-w-0 truncate"><Coffee size={18} className="shrink-0" /> Перерыв</div>
             </div>
-            <button onClick={() => onDeleteBlock(app.id)} className="w-8 h-8 flex items-center justify-center bg-white rounded-full text-[#FF3B30] shadow-sm active:scale-90 transition-transform"><Trash2 size={16} /></button>
+            <button onClick={() => onDeleteBlock(app.id)} className="w-8 h-8 flex items-center justify-center bg-white rounded-full text-[#FF3B30] shadow-sm active:scale-90 transition-transform shrink-0"><Trash2 size={16} /></button>
         </div>
       );
   }
 
-  // ИЗМЕНЕНИЕ: Умный сбор всех услуг из записи
   let allServices: any[] = [];
   if (app.selected_services && Array.isArray(app.selected_services) && app.selected_services.length > 0) {
       allServices = app.selected_services;
@@ -474,35 +473,36 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
   const displaySubtitle = petName ? (petBreed || 'Питомец') : 'Клиент';
 
   return (
-    <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
-      <div className="p-4 flex items-center justify-between" onClick={() => setEx(!ex)}>
-        <div className="flex items-center gap-4">
+    <div className="bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-300">
+      {/* ИЗМЕНЕНИЕ: Жесткая фиксация левой и правой части с flex-1 и shrink-0 */}
+      <div className="p-4 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 active:bg-slate-50 transition-colors" onClick={() => setEx(!ex)}>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="text-center shrink-0 w-12">
-            <div className="font-bold text-lg">{format(sTime, 'HH:mm')}</div>
-            <div className="text-[10px] uppercase text-slate-400">{format(sTime, 'd MMM', { locale: ru })}</div>
+            <div className="font-bold text-lg leading-none">{format(sTime, 'HH:mm')}</div>
+            <div className="text-[10px] uppercase text-slate-400 mt-1">{format(sTime, 'd MMM', { locale: ru })}</div>
           </div>
-          <div className="w-[1px] h-8 bg-slate-100" />
-          <div className="min-w-0 pr-2">
+          <div className="w-[1px] h-8 bg-slate-100 shrink-0" />
+          <div className="min-w-0 flex-1 pr-2">
             <div className="font-bold text-[15px] text-black truncate">{displayTitle}</div>
-            {/* ИЗМЕНЕНИЕ: Выводим все склеенные услуги с обрезанием длинного текста (truncate) */}
-            <div className="text-[13px] font-medium text-slate-400 mt-0.5 truncate max-w-[160px]">{displayServiceTitle}</div>
+            <div className="text-[13px] font-medium text-slate-400 mt-0.5 truncate">{displayServiceTitle}</div>
           </div>
         </div>
-        <div className="flex items-center gap-2 ml-2 shrink-0">
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: cfg.bg, color: cfg.text }}>{cfg.lbl}</span>
-          <ChevronDown size={16} className={ex ? "rotate-180 text-[#007AFF]" : "text-[#8E8E93]"} />
+
+        {/* ИЗМЕНЕНИЕ: Плавная анимация стрелки и запрет на сжатие/съезжание */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0" style={{ backgroundColor: cfg.bg, color: cfg.text }}>{cfg.lbl}</span>
+          <ChevronDown size={18} className={`shrink-0 transition-transform duration-300 ${ex ? "rotate-180 text-[#007AFF]" : "text-[#8E8E93]"}`} />
         </div>
       </div>
 
       {ex && (
-        <div className="px-4 pb-4 space-y-4 animate-in slide-in-from-top-1">
+        <div className="px-4 pb-4 space-y-4 animate-in slide-in-from-top-2 duration-300">
           <div className="pt-3 border-t flex gap-4">
             <div className="w-16 h-16 rounded-[14px] bg-slate-50 overflow-hidden shrink-0 flex items-center justify-center">
               {displayImage ? <img src={displayImage} className="w-full h-full object-cover" /> : <User className="text-slate-300" size={28} />}
             </div>
             <div className="space-y-1.5 flex-1 min-w-0">
               <div className="font-bold text-sm text-black">{displaySubtitle}</div>
-              {/* ИЗМЕНЕНИЕ: Выводим итоговую сумму всех услуг */}
               <div className="text-xs font-bold text-[#007AFF] bg-[#007AFF]/10 p-2 rounded-lg inline-block whitespace-normal break-words max-w-full">
                   {displayServiceTitle} • {displayTotalPrice} ₸
               </div>
