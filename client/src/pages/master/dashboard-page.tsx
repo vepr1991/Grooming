@@ -39,6 +39,7 @@ type Appointment = {
   end_time: string;
   status: 'pending' | 'confirmed' | 'completed' | 'canceled' | 'blocked';
   services: any;
+  selected_services?: any; // ИЗМЕНЕНИЕ: Добавили поддержку нескольких выбранных услуг
 };
 
 type Service = {
@@ -62,7 +63,7 @@ export function MasterDashboardPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [salonNiche, setSalonNiche] = useState<string>('beauty'); // 👈 ИЗМЕНЕНИЕ: Стейт для ниши
+  const [salonNiche, setSalonNiche] = useState<string>('beauty');
 
   // Modals state
   const [isAdding, setIsAdding] = useState(false);
@@ -115,7 +116,7 @@ export function MasterDashboardPage() {
   };
 
   useEffect(() => {
-    fetchSalonData(); // Загружаем нишу
+    fetchSalonData();
     fetchServices();
     fetchAppointments();
   }, [salonId]);
@@ -361,7 +362,6 @@ export function MasterDashboardPage() {
                  <PhoneInput value={newApp.client_phone} onChange={val => setNewApp({...newApp, client_phone: val})} />
                </div>
 
-               {/* ИЗМЕНЕНИЕ: Показываем поля питомца ТОЛЬКО для салонов груминга */}
                {salonNiche === 'grooming' && (
                  <div className="grid grid-cols-2 gap-3">
                    <input placeholder="Кличка (если есть)" className="bg-white p-3 rounded-xl outline-none text-sm" value={newApp.pet_name} onChange={e => setNewApp({...newApp, pet_name: e.target.value})} />
@@ -434,7 +434,20 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
       );
   }
 
-  const sInfo = Array.isArray(app.services) ? app.services[0] : app.services;
+  // ИЗМЕНЕНИЕ: Умный сбор всех услуг из записи
+  let allServices: any[] = [];
+  if (app.selected_services && Array.isArray(app.selected_services) && app.selected_services.length > 0) {
+      allServices = app.selected_services;
+  } else if (app.services && Array.isArray(app.services)) {
+      allServices = app.services;
+  } else if (app.services) {
+      allServices = [app.services];
+  }
+
+  const displayServiceTitle = allServices.length > 0 ? allServices.map(s => s.title).join(' + ') : 'Услуга';
+  const displayTotalPrice = allServices.reduce((sum, s) => sum + (Number(s.price) || 0), 0);
+  const displayImage = allServices[0]?.image_url;
+
   const sTime = parseDate(app.start_time);
   const cfg: any = {
     pending: { bg: '#FFF4D6', text: '#855E00', lbl: 'НОВАЯ' },
@@ -454,7 +467,6 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
   }
   const chatLink = tgUsername ? `https://t.me/${tgUsername}` : `https://wa.me/${cleanPhone}`;
 
-  // ИЗМЕНЕНИЕ: Безопасно достаем имя и породу, если они есть
   const petName = app.metadata?.petName || app.pet_name;
   const petBreed = app.metadata?.petBreed || app.pet_breed;
 
@@ -470,9 +482,10 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
             <div className="text-[10px] uppercase text-slate-400">{format(sTime, 'd MMM', { locale: ru })}</div>
           </div>
           <div className="w-[1px] h-8 bg-slate-100" />
-          <div>
-            <div className="font-bold text-[15px] text-black">{displayTitle}</div>
-            <div className="text-[13px] font-medium text-slate-400 mt-0.5">{sInfo?.title || 'Услуга'}</div>
+          <div className="min-w-0 pr-2">
+            <div className="font-bold text-[15px] text-black truncate">{displayTitle}</div>
+            {/* ИЗМЕНЕНИЕ: Выводим все склеенные услуги с обрезанием длинного текста (truncate) */}
+            <div className="text-[13px] font-medium text-slate-400 mt-0.5 truncate max-w-[160px]">{displayServiceTitle}</div>
           </div>
         </div>
         <div className="flex items-center gap-2 ml-2 shrink-0">
@@ -485,11 +498,14 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
         <div className="px-4 pb-4 space-y-4 animate-in slide-in-from-top-1">
           <div className="pt-3 border-t flex gap-4">
             <div className="w-16 h-16 rounded-[14px] bg-slate-50 overflow-hidden shrink-0 flex items-center justify-center">
-              {sInfo?.image_url ? <img src={sInfo.image_url} className="w-full h-full object-cover" /> : <User className="text-slate-300" size={28} />}
+              {displayImage ? <img src={displayImage} className="w-full h-full object-cover" /> : <User className="text-slate-300" size={28} />}
             </div>
-            <div className="space-y-1.5 flex-1">
+            <div className="space-y-1.5 flex-1 min-w-0">
               <div className="font-bold text-sm text-black">{displaySubtitle}</div>
-              <div className="text-xs font-bold text-[#007AFF] bg-[#007AFF]/10 p-2 rounded-lg inline-block">{sInfo?.title} • {sInfo?.price} ₸</div>
+              {/* ИЗМЕНЕНИЕ: Выводим итоговую сумму всех услуг */}
+              <div className="text-xs font-bold text-[#007AFF] bg-[#007AFF]/10 p-2 rounded-lg inline-block whitespace-normal break-words max-w-full">
+                  {displayServiceTitle} • {displayTotalPrice} ₸
+              </div>
               <div className="text-[13px] font-medium text-slate-500">Владелец: {app.client_name}</div>
             </div>
           </div>
