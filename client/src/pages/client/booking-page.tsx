@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { format, addDays, isSameDay, isBefore, parse, addMinutes, startOfToday } from "date-fns";
+import { format, addDays, isSameDay, isBefore, parse, addMinutes, startOfToday, addMonths, subMonths, isSameMonth } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
   ChevronLeft, ChevronRight, MapPin, Clock, CheckCircle2,
@@ -53,6 +53,9 @@ export function ClientBookingPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
 
+  // ИЗМЕНЕНИЕ: Состояние для навигации по месяцам в календаре
+  const [currentMonth, setCurrentMonth] = useState<Date>(startOfToday());
+
   // 4. ДАННЫЕ ФОРМЫ (С ПАМЯТЬЮ)
   // @ts-ignore
   const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -66,7 +69,7 @@ export function ClientBookingPage() {
           phone: parsed.phone || '',
           petName: parsed.petName || '',
           petBreed: parsed.petBreed || '',
-          agreed: true // ИЗМЕНЕНИЕ: Галочка теперь стоит по умолчанию
+          agreed: true
         };
     } catch {
         return { name: tgUser?.first_name || '', phone: '', petName: '', petBreed: '', agreed: true };
@@ -137,7 +140,7 @@ export function ClientBookingPage() {
     return slots;
   }, [salon, selectedDate, selectedServices, busySlots, totalDuration]);
 
-  // Расчет времени окончания (для экрана деталей)
+  // Расчет времени окончания
   const endTimeStr = useMemo(() => {
       if (!selectedTime) return "";
       const start = parse(selectedTime, 'HH:mm', selectedDate);
@@ -159,7 +162,6 @@ export function ClientBookingPage() {
   };
 
   const handleFinish = async () => {
-    // ИЗМЕНЕНИЕ: Человеческая валидация формы с подсказками
     if (!formData.phone || formData.phone.length < 11) {
         toast.error("Введите корректный номер телефона");
         return;
@@ -219,7 +221,6 @@ export function ClientBookingPage() {
 
   const totalAmount = selectedServices.reduce((sum, s) => sum + s.price, 0);
 
-  // Умная обработка адреса (ищем ссылку внутри текста)
   let addressUrl = "";
   let displayAddress = "";
   if (salon?.address) {
@@ -228,10 +229,87 @@ export function ClientBookingPage() {
       displayAddress = salon.address.replace(/(https?:\/\/[^\s]+)/g, '').trim() || salon.address;
   }
 
+  // ИЗМЕНЕНИЕ: Компонент Календаря для клиента
+  const renderCalendar = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    // Смещение для начала месяца (понедельник = 1)
+    const offset = (new Date(year, month, 1).getDay() || 7) - 1;
+
+    const days: React.ReactNode[] = [];
+
+    // Пустые ячейки для смещения начала месяца
+    for (let i = 0; i < offset; i++) {
+        days.push(<div key={`empty-${i}`} className="h-10" />);
+    }
+
+    // Заполняем дни месяца
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dObj = new Date(year, month, d);
+      const isSelected = isSameDay(dObj, selectedDate);
+      const isPastDay = isBefore(dObj, startOfToday());
+
+      // Проверяем, рабочий ли это день по графику мастера
+      const dayName = format(dObj, 'eeeeee', { locale: ru }).toLowerCase();
+      const dayConfig = salon?.schedule?.find((s: any) => s.day.toLowerCase() === dayName);
+      const isWorking = dayConfig?.isWorking ?? true;
+
+      const isDisabled = isPastDay || !isWorking;
+
+      days.push(
+        <button
+          key={d}
+          disabled={isDisabled}
+          onClick={() => { setSelectedDate(dObj); setSelectedTime(null); }}
+          className={`h-11 w-full rounded-xl text-[15px] font-bold flex items-center justify-center transition-all
+            ${isSelected ? 'bg-[#007AFF] text-white shadow-md' :
+              isDisabled ? 'text-[#C7C7CC] opacity-40 cursor-not-allowed bg-slate-50' :
+              'bg-white text-black border border-slate-100 hover:bg-slate-50 active:bg-slate-100'}`}
+        >
+          {d}
+        </button>
+      );
+    }
+
+    return (
+      <div className="bg-white rounded-[24px] p-4 shadow-sm border border-slate-100 mb-2">
+        {/* Шапка календаря с месяцем и навигацией */}
+        <div className="flex justify-between items-center mb-4 px-2">
+          <span className="font-extrabold text-[17px] capitalize text-black">
+              {format(currentMonth, 'LLLL yyyy', { locale: ru })}
+          </span>
+          <div className="flex gap-2">
+            <button
+              disabled={isBefore(currentMonth, startOfToday()) && !isSameMonth(currentMonth, startOfToday())}
+              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+              className="w-8 h-8 flex items-center justify-center bg-[#F2F2F7] rounded-full text-black disabled:opacity-30 active:scale-95 transition-transform"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+              className="w-8 h-8 flex items-center justify-center bg-[#F2F2F7] rounded-full text-black active:scale-95 transition-transform"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Дни недели */}
+        <div className="grid grid-cols-7 text-center pb-2 text-[11px] font-bold text-[#8E8E93] uppercase tracking-wider">
+            {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(d => <span key={d}>{d}</span>)}
+        </div>
+
+        {/* Сетка дней */}
+        <div className="grid grid-cols-7 gap-1.5">{days}</div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-[#F2F2F7] max-w-md mx-auto overflow-x-hidden font-sans pb-24">
 
-      {/* ИЗМЕНЕНИЕ: Прячем шапку на первом экране (showcase) */}
       {step !== 'success' && step !== 'showcase' && (
         <header className="bg-white/80 backdrop-blur-md sticky top-0 z-20 px-5 pt-12 pb-4 border-b border-slate-100 flex items-center gap-4 transition-all">
           <button onClick={() => setStep(step === 'details' ? 'datetime' : 'showcase')} className="text-[#007AFF] active:opacity-50">
@@ -248,19 +326,15 @@ export function ClientBookingPage() {
         {/* ЭКРАН 1: ВИТРИНА */}
         {step === 'showcase' && salon && (
           <div className="animate-in fade-in duration-500">
-
-            {/* ИЗМЕНЕНИЕ: Чистая картинка, без текста поверх */}
             <div className="relative h-64 w-full overflow-hidden bg-slate-200">
               <img src={salon.photo_url || "/placeholder-salon.jpg"} className="w-full h-full object-cover" alt="Salon" />
             </div>
 
-            {/* ИЗМЕНЕНИЕ: Новый красивый блок с названием и адресом снизу */}
             <div className="bg-white px-5 pt-5 pb-5 rounded-b-[24px] shadow-sm mb-4">
                 <h2 className="text-[26px] font-extrabold text-black tracking-tight leading-tight mb-3">
                     {salon.name}
                 </h2>
 
-                {/* ИЗМЕНЕНИЕ: Адрес теперь выглядит как кликабельная плашка */}
                 <a
                     href={addressUrl}
                     target="_blank"
@@ -278,7 +352,6 @@ export function ClientBookingPage() {
                 </div>
             )}
 
-            {/* КНОПКА INSTAGRAM */}
             {salon.instagram_url && (
                 <div className="px-5 pb-4">
                     <a
@@ -342,34 +415,17 @@ export function ClientBookingPage() {
           </div>
         )}
 
-        {/* ЭКРАН 2: ВРЕМЯ */}
+        {/* ЭКРАН 2: ВРЕМЯ И КАЛЕНДАРЬ */}
         {step === 'datetime' && (
-          <div className="p-5 space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
-            <section>
-              {/* ИЗМЕНЕНИЕ: Добавлено название месяца сверху */}
-              <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1">Выберите дату</h3>
-                  <span className="text-[14px] font-bold text-[#007AFF] capitalize">{format(selectedDate, 'LLLL', { locale: ru })}</span>
-              </div>
-              <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-                {/* ИЗМЕНЕНИЕ: Горизонт планирования увеличен с 14 до 30 дней */}
-                {[...Array(30)].map((_, i) => {
-                  const d = addDays(startOfToday(), i);
-                  const isSelected = isSameDay(d, selectedDate);
-                  return (
-                    <button key={i} onClick={() => setSelectedDate(d)} className={`flex flex-col items-center justify-center min-w-[65px] h-[85px] rounded-[20px] transition-all ${isSelected ? 'bg-[#007AFF] text-white shadow-lg' : 'bg-white text-black border border-slate-100'}`}>
-                      <span className={`text-[11px] font-bold uppercase ${isSelected ? 'opacity-80' : 'opacity-40'}`}>
-                        {format(d, 'eee', { locale: ru })}
-                      </span>
-                      <span className="text-[20px] font-black mt-1">{format(d, 'd')}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+          <div className="p-5 space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+
+            {/* Рендерим наш новый календарь */}
+            {renderCalendar()}
 
             <section>
-              <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 mb-3">Доступное время</h3>
+              <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 mb-3 mt-4">
+                Свободное время
+              </h3>
               <div className="relative min-h-[100px]">
                 {isSlotsLoading ? (
                   <div className="flex justify-center py-10"><Loader2 className="animate-spin text-slate-300" /></div>
@@ -380,7 +436,7 @@ export function ClientBookingPage() {
                         {time}
                       </button>
                     )) : (
-                      <div className="col-span-4 text-center py-8 text-[#8E8E93] bg-white rounded-[20px] border border-dashed text-sm">Нет свободных окон 😔</div>
+                      <div className="col-span-4 text-center py-8 text-[#8E8E93] bg-white rounded-[20px] border border-dashed text-[15px] font-medium">Нет свободных окон 😔</div>
                     )}
                   </div>
                 )}
@@ -406,7 +462,6 @@ export function ClientBookingPage() {
                             <Calendar size={16} className="text-[#007AFF]"/>
                             <span className="font-bold text-black">{format(selectedDate, 'd MMMM', { locale: ru })}</span>
                         </div>
-                        {/* ИЗМЕНЕНИЕ: Выводим время начала, конца и общую длительность */}
                         <div className="flex items-center gap-2">
                             <Clock size={16} className="text-[#007AFF]"/>
                             <span className="font-bold text-black">{selectedTime} - {endTimeStr}</span>
@@ -450,7 +505,6 @@ export function ClientBookingPage() {
                </div>
             </div>
 
-            {/* ИЗМЕНЕНИЕ: Кнопка всегда активна (чтобы юзер мог кликнуть и увидеть ошибку) */}
             <button
               disabled={createBookingMutation.isPending}
               onClick={handleFinish}
@@ -468,7 +522,6 @@ export function ClientBookingPage() {
               <CheckCircle2 size={52} strokeWidth={2.5} />
             </div>
             <h2 className="text-[32px] font-black text-black mb-3 tracking-tight">Готово!</h2>
-            {/* ИЗМЕНЕНИЕ: Понятный текст успеха */}
             <p className="text-[17px] text-[#8E8E93] font-bold leading-relaxed mb-12 px-4">
               Ждем подтверждения от мастера. Уведомление придет прямо в этот чат с ботом.
             </p>
