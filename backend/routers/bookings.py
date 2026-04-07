@@ -21,12 +21,18 @@ async def create_booking(data: BookingRequest, background_tasks: BackgroundTasks
     validate_working_hours(data.salonId, start_dt, end_dt)
     if check_overlap(data.salonId, start_dt, end_dt): raise HTTPException(409, "Slot taken")
 
+    # ИЗМЕНЕНИЕ: Безопасно достаем ID из объекта Telegram пользователя
+    client_tg_id = None
+    if data.client.telegram_user and isinstance(data.client.telegram_user, dict):
+        client_tg_id = str(data.client.telegram_user.get("id", ""))
+
     payload = {
         "salon_id": data.salonId,
         "service_id": data.services[0].id if data.services else None,
         "client_name": data.client.name,
         "client_phone": data.client.phone,
         "client_tg_user": json.dumps(data.client.telegram_user),
+        "client_tg_id": client_tg_id,  # <--- ПРАВИЛЬНАЯ АРХИТЕКТУРА: Сохраняем ID отдельно
         "metadata": data.metadata,
         "pet_name": data.metadata.get("petName", "") if data.metadata else "",
         "pet_breed": data.metadata.get("petBreed", "") if data.metadata else "",
@@ -179,24 +185,14 @@ async def get_analytics(salon_id: str, tg_user_id: Optional[int] = Depends(verif
 @router.get("/api/client/appointments/{tg_user_id}")
 async def get_client_appointments(tg_user_id: int):
     try:
+        # ИЗМЕНЕНИЕ: Теперь запрос чистый, быстрый и без костылей!
         res = supabase.table("appointments") \
             .select("*, salons(name, address, photo_url, phone), services(title, duration_minutes)") \
-            .text_search("client_tg_user", str(tg_user_id)) \
+            .eq("client_tg_id", str(tg_user_id)) \
             .order("start_time", desc=True) \
             .execute()
 
-        apps = res.data or []
-
-        filtered_apps = []
-        for app in apps:
-            tg_user = app.get("client_tg_user")
-            if not tg_user: continue
-
-            parsed_user = json.loads(tg_user) if isinstance(tg_user, str) else tg_user
-            if str(parsed_user.get("id")) == str(tg_user_id):
-                filtered_apps.append(app)
-
-        return {"success": True, "data": filtered_apps}
+        return {"success": True, "data": res.data or []}
     except Exception as e:
         logger.error(f"Error fetching client appointments: {e}")
         raise HTTPException(500, str(e))
