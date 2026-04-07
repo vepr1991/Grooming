@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 export type Salon = {
   id: string;
   name: string;
-  niche: string; // <--- ДОБАВИЛИ НИШУ
+  niche: string; //
   address: string;
   phone: string;
   photo_url: string;
@@ -114,4 +114,17 @@ export function useCreateBooking() {
             });
         }
     });
+}
+
+// ДОБАВЛЕНО: Хук для истории записей клиента
+export function useClientAppointments(tgUserId: number | undefined) {
+  return useQuery({
+    queryKey: ['clientAppointments', tgUserId],
+    queryFn: async () => {
+      if (!tgUserId) return [];
+      const { data } = await api.get(`/api/client/appointments/${tgUserId}`);
+      return data.data || [];
+    },
+    enabled: !!tgUserId,
+  });
 }

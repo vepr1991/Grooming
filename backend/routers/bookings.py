@@ -173,3 +173,30 @@ async def get_analytics(salon_id: str, tg_user_id: Optional[int] = Depends(verif
     except Exception as e:
         logger.error(f"Analytics error: {e}")
         raise HTTPException(500, str(e))
+
+
+# --- CLIENT APPOINTMENTS (История для клиента) ---
+@router.get("/api/client/appointments/{tg_user_id}")
+async def get_client_appointments(tg_user_id: int):
+    try:
+        res = supabase.table("appointments") \
+            .select("*, salons(name, address, photo_url, phone), services(title, duration_minutes)") \
+            .text_search("client_tg_user", str(tg_user_id)) \
+            .order("start_time", desc=True) \
+            .execute()
+
+        apps = res.data or []
+
+        filtered_apps = []
+        for app in apps:
+            tg_user = app.get("client_tg_user")
+            if not tg_user: continue
+
+            parsed_user = json.loads(tg_user) if isinstance(tg_user, str) else tg_user
+            if str(parsed_user.get("id")) == str(tg_user_id):
+                filtered_apps.append(app)
+
+        return {"success": True, "data": filtered_apps}
+    except Exception as e:
+        logger.error(f"Error fetching client appointments: {e}")
+        raise HTTPException(500, str(e))
