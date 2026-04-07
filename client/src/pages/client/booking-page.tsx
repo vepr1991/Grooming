@@ -571,10 +571,15 @@ export function ClientBookingPage() {
                    </div>
                 </div>
 
+                {/* 👇 ИСПРАВЛЕНИЕ: Кнопка "Записаться" теперь динамическая */}
                 <button
-                  disabled={createBookingMutation.isPending}
+                  disabled={createBookingMutation.isPending || !formData.agreed}
                   onClick={handleFinish}
-                  className="w-full py-4 rounded-[20px] font-black text-[17px] shadow-xl transition-all bg-[#34C759] text-white active:scale-95 shadow-green-100"
+                  className={`w-full py-4 rounded-[20px] font-black text-[17px] transition-all active:scale-95 ${
+                    formData.agreed
+                      ? 'bg-[#34C759] text-white shadow-xl shadow-green-100'
+                      : 'bg-[#E5E5EA] text-[#8E8E93] cursor-not-allowed shadow-none'
+                  }`}
                 >
                   {createBookingMutation.isPending ? <Loader2 className="animate-spin mx-auto"/> : `Записаться (${totalAmount} ₸)`}
                 </button>
@@ -653,9 +658,9 @@ const InputBlock = ({ label, value, onChange, placeholder }: any) => (
   </div>
 );
 
-// Карточка истории записей клиента
+// 👇 ИСПРАВЛЕНИЕ: Переработанный дизайн карточки истории + фикс времени
 const HistoryCard = ({ app, isPast }: { app: any, isPast?: boolean }) => {
-    // ИСПРАВЛЕНИЕ 1: Отрезаем часовой пояс (+00 или Z), чтобы браузер не плюсовал 5 часов
+    // Отрезаем часовой пояс (+00 или Z), чтобы браузер не плюсовал 5 часов
     const sTime = new Date(app.start_time.split('+')[0].split('Z')[0]);
 
     let services = [];
@@ -673,22 +678,26 @@ const HistoryCard = ({ app, isPast }: { app: any, isPast?: boolean }) => {
     }[app.status] || { text: 'Неизвестно', color: 'text-slate-500' };
 
     return (
-        <div className={`bg-white rounded-[20px] p-4 border shadow-sm ${isPast ? 'opacity-60 grayscale-[0.2]' : 'border-slate-100'}`}>
+        <div className={`rounded-[20px] p-4 border transition-all ${
+            isPast
+                ? 'bg-slate-50 border-slate-100 opacity-60 grayscale-[0.5]'
+                : 'bg-white border-blue-100 shadow-md ring-1 ring-blue-50'
+        }`}>
             <div className="flex justify-between items-start mb-3">
                 <div>
-                    <h4 className="font-bold text-[16px] text-black">{app.salons?.name || 'Салон'}</h4>
+                    <h4 className={`font-bold text-[16px] ${isPast ? 'text-slate-600' : 'text-black'}`}>{app.salons?.name || 'Салон'}</h4>
                     <span className={`text-[12px] font-bold ${cfg.color}`}>{cfg.text}</span>
                 </div>
                 <div className="text-right">
-                    <div className="font-black text-[18px] leading-tight">{format(sTime, 'd MMM', { locale: ru })}</div>
+                    <div className={`font-black text-[18px] leading-tight ${isPast ? 'text-slate-500' : 'text-black'}`}>{format(sTime, 'd MMM', { locale: ru })}</div>
                     <div className="text-[#8E8E93] font-medium text-[13px]">{format(sTime, 'HH:mm')}</div>
                 </div>
             </div>
-            <div className="bg-[#F2F2F7] rounded-xl p-3 space-y-1">
-                <div className="text-[14px] font-medium text-slate-700 truncate">{displayService}</div>
-                <div className="text-[14px] font-bold">{totalAmount} ₸</div>
+
+            <div className={`rounded-xl p-3 space-y-1 ${isPast ? 'bg-[#E5E5EA]/50' : 'bg-blue-50/50'}`}>
+                <div className={`text-[14px] font-medium truncate ${isPast ? 'text-slate-500' : 'text-slate-700'}`}>{displayService}</div>
+                <div className={`text-[14px] font-bold ${isPast ? 'text-slate-500' : 'text-black'}`}>{totalAmount} ₸</div>
             </div>
-            {/* ИСПРАВЛЕНИЕ 2: Убрали неработающую кнопку звонка для чистоты интерфейса */}
         </div>
     );
 };
