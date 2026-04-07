@@ -79,7 +79,9 @@ async def register_salon(p: SalonCreate, tg_user_id: Optional[int] = Depends(ver
 
             niche_icon = "💅 Бьюти" if p.niche == "beauty" else "🐶 Груминг"
             msg = f"🚨 <b>Новая регистрация!</b>\n\n👤 {new_salon['name']}\n📍 {new_salon.get('address')}\n📞 {new_salon.get('phone')}\n🏷 Ниша: {niche_icon}"
-            bot.send_message(ADMIN_CHAT_ID, msg, parse_mode="HTML", reply_markup=markup)
+
+            # ИЗМЕНЕНИЕ: Добавлен await
+            await bot.send_message(ADMIN_CHAT_ID, msg, parse_mode="HTML", reply_markup=markup)
         except Exception as e:
             logger.error(f"Admin notify error: {e}")
 

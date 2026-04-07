@@ -73,7 +73,8 @@ def validate_working_hours(salon_id: str, start_dt: datetime, end_dt: datetime):
 
 
 # --- NOTIFICATIONS ---
-def send_telegram_notification_task(salon_id: str, data: BookingRequest, start_dt: datetime):
+# ИЗМЕНЕНИЕ: async def и await bot.send_message
+async def send_telegram_notification_task(salon_id: str, data: BookingRequest, start_dt: datetime):
     try:
         res = supabase.table("salons").select("telegram_chat_id, name").eq("id", salon_id).single().execute()
         if not res.data: return
@@ -81,7 +82,6 @@ def send_telegram_notification_task(salon_id: str, data: BookingRequest, start_d
 
         services_list = ", ".join([s.title for s in data.services])
 
-        # ИЗМЕНЕНИЕ: Динамическое построение дополнительных полей на основе metadata
         extra_info_lines = []
         meta = data.metadata or {}
 
@@ -94,7 +94,7 @@ def send_telegram_notification_task(salon_id: str, data: BookingRequest, start_d
         msg = (f"🔔 <b>Новая запись в {res.data.get('name')}!</b>\n\n"
                f"👤 <b>Клиент:</b> {data.client.name}\n"
                f"📞 <b>Тел:</b> {data.client.phone}\n"
-               f"{extra_info_str}"  # Пустая строка, если это салон маникюра
+               f"{extra_info_str}"
                f"✂️ <b>Услуги:</b> {services_list}\n"
                f"📅 <b>Дата:</b> {start_dt.strftime('%d.%m.%Y')}\n"
                f"⏰ <b>Время:</b> {start_dt.strftime('%H:%M')}")
@@ -102,12 +102,13 @@ def send_telegram_notification_task(salon_id: str, data: BookingRequest, start_d
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("Открыть админку", web_app=types.WebAppInfo(
             url="https://grooming-react-front.onrender.com/master")))
-        bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=markup)
+        await bot.send_message(chat_id, msg, parse_mode="HTML", reply_markup=markup)
     except Exception as e:
         logger.error(f"Notify error: {e}")
 
 
-def send_client_notification(appointment_id: str, status_type: str):
+# ИЗМЕНЕНИЕ: async def и await bot.send_message
+async def send_client_notification(appointment_id: str, status_type: str):
     try:
         res = supabase.table("appointments").select("*, salons(name, phone), services(title)").eq("id",
                                                                                                   appointment_id).single().execute()
@@ -135,13 +136,12 @@ def send_client_notification(appointment_id: str, status_type: str):
         if status_type == 'confirmed' and appt['salons'].get('phone'):
             msg += f"\n\n📞 <b>Телефон:</b> {appt['salons']['phone']}"
 
-        # ИЗМЕНЕНИЕ: Добавляем кнопку отмены для подтвержденных записей
         markup = None
         if status_type == 'confirmed':
             markup = types.InlineKeyboardMarkup()
             markup.add(types.InlineKeyboardButton("❌ Отменить запись", callback_data=f"cancel_{appointment_id}"))
 
-        bot.send_message(tg_user["id"], msg, parse_mode="HTML", reply_markup=markup)
+        await bot.send_message(tg_user["id"], msg, parse_mode="HTML", reply_markup=markup)
     except Exception as e:
         logger.error(f"Client notify error: {e}")
 
@@ -191,7 +191,8 @@ async def check_upcoming_appointments():
                     f"<i>Ждем вас!</i>"
                 )
 
-                bot.send_message(client_id, msg, parse_mode="HTML")
+                # ИЗМЕНЕНИЕ: await bot.send_message
+                await bot.send_message(client_id, msg, parse_mode="HTML")
                 supabase.table("appointments").update({"reminder_sent": True}).eq("id", appt['id']).execute()
 
             except Exception as e:
