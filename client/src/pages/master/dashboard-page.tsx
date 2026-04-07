@@ -39,7 +39,7 @@ type Appointment = {
   end_time: string;
   status: 'pending' | 'confirmed' | 'completed' | 'canceled' | 'blocked';
   services: any;
-  selected_services?: any; // ИЗМЕНЕНИЕ: Добавили поддержку нескольких выбранных услуг
+  selected_services?: any;
 };
 
 type Service = {
@@ -63,7 +63,10 @@ export function MasterDashboardPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
   const [salonNiche, setSalonNiche] = useState<string>('beauty');
+  // ИЗМЕНЕНИЕ: Добавили стейт для хранения графика мастера
+  const [salonSchedule, setSalonSchedule] = useState<any[]>([]);
 
   // Modals state
   const [isAdding, setIsAdding] = useState(false);
@@ -87,8 +90,19 @@ export function MasterDashboardPage() {
 
   const fetchSalonData = async () => {
     if (!salonId) return;
-    const { data } = await supabase.from('salons').select('niche').eq('id', salonId).single();
-    if (data) setSalonNiche(data.niche);
+    // ИЗМЕНЕНИЕ: Скачиваем график (schedule) из базы
+    const { data } = await supabase.from('salons').select('niche, schedule').eq('id', salonId).single();
+    if (data) {
+        setSalonNiche(data.niche);
+        if (data.schedule) {
+            try {
+                const parsed = typeof data.schedule === 'string' ? JSON.parse(data.schedule) : data.schedule;
+                setSalonSchedule(parsed);
+            } catch (e) {
+                console.error("Ошибка парсинга расписания", e);
+            }
+        }
+    }
   };
 
   const fetchAppointments = async () => {
@@ -221,16 +235,34 @@ export function MasterDashboardPage() {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const offset = (new Date(year, month, 1).getDay() || 7) - 1;
     const days: React.ReactNode[] = [];
+
     for (let i = 0; i < offset; i++) days.push(<div key={`p-${i}`} className="h-12" />);
+
     for (let d = 1; d <= daysInMonth; d++) {
-      const dObj = new Date(year, month, d), isSel = isSameDay(dObj, selectedDate), hasP = appointments.some(a => isSameDay(parseDate(a.start_time), dObj) && a.status === 'pending');
+      const dObj = new Date(year, month, d);
+      const isSel = isSameDay(dObj, selectedDate);
+      const hasP = appointments.some(a => isSameDay(parseDate(a.start_time), dObj) && a.status === 'pending');
+
+      // ИЗМЕНЕНИЕ: Проверяем, рабочий ли это день
+      const dayName = format(dObj, 'eeeeee', { locale: ru }).toLowerCase();
+      const dayConfig = salonSchedule.find((s: any) => s.day.toLowerCase() === dayName);
+      const isWorking = dayConfig?.isWorking ?? true;
+
       days.push(
         <div key={d} className="relative flex items-center justify-center h-12 cursor-pointer" onClick={() => setSelectedDate(dObj)}>
-          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold ${isSel ? 'bg-[#007AFF] text-white' : isToday(dObj) ? 'text-[#007AFF] bg-[#007AFF]/10' : 'text-black'}`}>{d}</div>
+          {/* ИЗМЕНЕНИЕ: Если день не рабочий, делаем его серым */}
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-colors
+            ${isSel ? 'bg-[#007AFF] text-white shadow-md' :
+              isToday(dObj) ? 'text-[#007AFF] bg-[#007AFF]/10' :
+              !isWorking ? 'text-[#C7C7CC] bg-slate-50 opacity-60' : 'text-black'}`}
+          >
+            {d}
+          </div>
           {hasP && !isSel && <div className="absolute bottom-1 w-1.5 h-1.5 bg-orange-500 rounded-full" />}
         </div>
       );
     }
+
     return (
       <div className="bg-white rounded-[16px] p-2 shadow-sm border border-slate-100 mx-5 mt-2">
         <div className="flex justify-between items-center px-4 py-2">
@@ -240,7 +272,7 @@ export function MasterDashboardPage() {
             <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}><ChevronRight /></button>
           </div>
         </div>
-        <div className="grid grid-cols-7 text-center py-2 text-[11px] font-bold text-[#8E8E93]">{['П', 'В', 'С', 'Ч', 'П', 'С', 'В'].map(d => <span key={d}>{d}</span>)}</div>
+        <div className="grid grid-cols-7 text-center py-2 text-[11px] font-bold text-[#8E8E93] uppercase tracking-wider">{['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(d => <span key={d}>{d}</span>)}</div>
         <div className="grid grid-cols-7 gap-y-1">{days}</div>
 
         <button
@@ -317,17 +349,17 @@ export function MasterDashboardPage() {
       {/* Переключатель вкладок */}
       <div className="px-5">
         <div className="flex bg-[#E3E3E8] p-1 rounded-xl shadow-sm">
-          <button onClick={() => setView('agenda')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg ${view === 'agenda' ? 'bg-white shadow-sm' : 'text-[#8E8E93]'}`}>Список</button>
-          <button onClick={() => setView('calendar')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg ${view === 'calendar' ? 'bg-white shadow-sm' : 'text-[#8E8E93]'}`}>Календарь</button>
-          <button onClick={() => setView('stats')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg ${view === 'stats' ? 'bg-white shadow-sm' : 'text-[#8E8E93]'}`}>Финансы</button>
+          <button onClick={() => setView('agenda')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg transition-all ${view === 'agenda' ? 'bg-white shadow-sm text-black' : 'text-[#8E8E93]'}`}>Список</button>
+          <button onClick={() => setView('calendar')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg transition-all ${view === 'calendar' ? 'bg-white shadow-sm text-black' : 'text-[#8E8E93]'}`}>Календарь</button>
+          <button onClick={() => setView('stats')} className={`flex-1 py-1.5 text-[13px] font-bold rounded-lg transition-all ${view === 'stats' ? 'bg-white shadow-sm text-black' : 'text-[#8E8E93]'}`}>Финансы</button>
         </div>
       </div>
 
       {view === 'agenda' && (
         <div className="px-5 space-y-4">
           <div className="flex bg-white/50 p-1 rounded-xl shadow-sm">
-            <button onClick={() => setFilter('pending')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg ${filter === 'pending' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>Ожидают</button>
-            <button onClick={() => setFilter('history')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg ${filter === 'history' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>История</button>
+            <button onClick={() => setFilter('pending')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg transition-all ${filter === 'pending' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>Ожидают</button>
+            <button onClick={() => setFilter('history')} className={`flex-1 py-2 text-[15px] font-bold rounded-lg transition-all ${filter === 'history' ? 'text-[#007AFF] bg-white' : 'text-[#8E8E93]'}`}>История</button>
           </div>
           <div className="space-y-3">
              {filteredApps.map(app => <AppointmentCard key={app.id} app={app} onStatusUpdate={updateStatus} onDeleteBlock={(id) => setBlockToDelete(id)} />)}
@@ -474,7 +506,6 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
 
   return (
     <div className="bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-300">
-      {/* ИЗМЕНЕНИЕ: Жесткая фиксация левой и правой части с flex-1 и shrink-0 */}
       <div className="p-4 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 active:bg-slate-50 transition-colors" onClick={() => setEx(!ex)}>
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="text-center shrink-0 w-12">
@@ -488,7 +519,6 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
           </div>
         </div>
 
-        {/* ИЗМЕНЕНИЕ: Плавная анимация стрелки и запрет на сжатие/съезжание */}
         <div className="flex items-center gap-2 shrink-0">
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0" style={{ backgroundColor: cfg.bg, color: cfg.text }}>{cfg.lbl}</span>
           <ChevronDown size={18} className={`shrink-0 transition-transform duration-300 ${ex ? "rotate-180 text-[#007AFF]" : "text-[#8E8E93]"}`} />
