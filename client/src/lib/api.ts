@@ -103,5 +103,9 @@ export const api = {
 
   // 🟢 CRM
   getClients: (salonId: string) =>
-    request<any[]>(`/api/clients/${salonId}`)
+    request<any[]>(`/api/clients/${salonId}`),
+
+  // 🟢 История записей клиента (ДОБАВЛЕНО)
+  getClientAppointments: (tgUserId: number) =>
+    request<{ success: boolean; data: any[] }>(`/api/client/appointments/${tgUserId}`)
 };

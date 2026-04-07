@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 export type Salon = {
   id: string;
   name: string;
-  niche: string; //
+  niche: string; // <--- ДОБАВИЛИ НИШУ
   address: string;
   phone: string;
   photo_url: string;
@@ -112,18 +112,22 @@ export function useCreateBooking() {
             queryClient.invalidateQueries({
                 queryKey: ['salonClients']
             });
+            // Инвалидируем историю записей, чтобы вкладка обновилась сразу
+            queryClient.invalidateQueries({
+                queryKey: ['clientAppointments']
+            });
         }
     });
 }
 
-// ДОБАВЛЕНО: Хук для истории записей клиента
+// 5. Хук для истории записей клиента
 export function useClientAppointments(tgUserId: number | undefined) {
   return useQuery({
     queryKey: ['clientAppointments', tgUserId],
     queryFn: async () => {
       if (!tgUserId) return [];
-      const { data } = await api.get(`/api/client/appointments/${tgUserId}`);
-      return data.data || [];
+      const response = await api.getClientAppointments(tgUserId);
+      return response.data || [];
     },
     enabled: !!tgUserId,
   });
