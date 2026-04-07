@@ -1,5 +1,6 @@
 import time
 import telebot
+from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -15,7 +16,8 @@ def h_start(m):
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(telebot.types.InlineKeyboardButton("🚀 Открыть приложение", web_app=telebot.types.WebAppInfo(
         "https://grooming-react-front.onrender.com")))
-    bot.reply_to(m, f"Привет! Я бот для записи на груминг.\nЖми кнопку ниже 👇", reply_markup=markup)
+    # Универсальное приветствие (раз у нас не только груминг)
+    bot.reply_to(m, f"Привет! Я бот для удобной онлайн-записи.\nЖми кнопку ниже 👇", reply_markup=markup)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('approve_') or call.data.startswith('reject_'))
@@ -41,6 +43,59 @@ def handle_admin_decision(call):
     except Exception as e:
         logger.error(f"Approval error: {e}")
         bot.answer_callback_query(call.id, "Ошибка обработки")
+
+
+# --- ОБРАБОТЧИК ОТМЕНЫ ЗАПИСИ КЛИЕНТОМ ---
+@bot.callback_query_handler(func=lambda call: call.data.startswith('cancel_'))
+def handle_client_cancel(call):
+    appointment_id = call.data.split('_')[1]
+    try:
+        # 1. Ищем запись в базе
+        res = supabase.table("appointments").select("*, salons(name, telegram_chat_id)").eq("id",
+                                                                                            appointment_id).single().execute()
+        if not res.data:
+            bot.answer_callback_query(call.id, "Запись не найдена")
+            return
+
+        appt = res.data
+
+        # 2. Проверяем, не отменена ли она уже
+        if appt['status'] == 'canceled':
+            bot.answer_callback_query(call.id, "Запись уже отменена", show_alert=True)
+            return
+
+        # 3. Меняем статус на отмененный
+        supabase.table("appointments").update({"status": "canceled"}).eq("id", appointment_id).execute()
+
+        # 4. Обновляем сообщение у клиента (убираем кнопку, добавляем текст)
+        bot.edit_message_text(
+            f"{call.message.html_text}\n\n<i>🚫 Вы самостоятельно отменили эту запись.</i>",
+            call.message.chat.id,
+            call.message.id,
+            parse_mode="HTML"
+        )
+        bot.answer_callback_query(call.id, "Запись успешно отменена")
+
+        # 5. Уведомляем мастера об отмене
+        master_chat_id = appt['salons']['telegram_chat_id']
+        if master_chat_id:
+            # Парсим время безопасно
+            start_dt = datetime.fromisoformat(appt["start_time"].replace("Z", "+00:00"))
+            time_str = start_dt.strftime('%d.%m.%Y в %H:%M')
+
+            client_name = appt.get('client_name', 'Клиент')
+            pet_name = appt.get('pet_name') or (appt.get('metadata') or {}).get('petName')
+            display_name = f"{client_name} (Питомец: {pet_name})" if pet_name else client_name
+
+            bot.send_message(
+                master_chat_id,
+                f"⚠️ <b>Отмена записи!</b>\n\nКлиент <b>{display_name}</b> отменил запись на {time_str}.\nОкошко снова свободно.",
+                parse_mode="HTML"
+            )
+
+    except Exception as e:
+        logger.error(f"Client cancel error: {e}")
+        bot.answer_callback_query(call.id, "Произошла ошибка при отмене")
 
 
 # --- LIFESPAN ---

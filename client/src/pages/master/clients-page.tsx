@@ -35,11 +35,12 @@ export function MasterClientsPage() {
     load();
   }, [salonId]);
 
-  const filteredClients = clients.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone.includes(search) ||
-    c.pet_name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredClients = clients.filter(c => {
+    const petName = c.pet_name || c.metadata?.petName || "";
+    return c.name.toLowerCase().includes(search.toLowerCase()) ||
+           c.phone.includes(search) ||
+           petName.toLowerCase().includes(search.toLowerCase());
+  });
 
   return (
     <div className="space-y-6 pt-10 pb-28 bg-[#F2F2F7] min-h-screen font-sans">
@@ -90,11 +91,15 @@ function ClientCard({ client }: { client: any }) {
   const chatLink = tgUsername ? `https://t.me/${tgUsername}` : `https://wa.me/${cleanPhone}`;
   const isTelegram = !!tgUsername;
 
+  // ИЗМЕНЕНИЕ: Безопасно достаем имя питомца
+  const petName = client.pet_name || client.metadata?.petName;
+  const petBreed = client.pet_breed || client.metadata?.petBreed;
+
   return (
     <div
       className={`bg-white rounded-[20px] shadow-sm border border-slate-100 transition-all duration-300 overflow-hidden ${expanded ? 'shadow-md' : ''}`}
     >
-      {/* Шапка карточки (всегда видна) */}
+      {/* Шапка карточки */}
       <div
         className="p-4 flex items-center justify-between cursor-pointer active:bg-slate-50 transition-colors"
         onClick={() => setExpanded(!expanded)}
@@ -106,10 +111,13 @@ function ClientCard({ client }: { client: any }) {
 
           <div className="min-w-0">
             <h3 className="text-[17px] font-bold text-black truncate">{client.name}</h3>
-            <div className="flex items-center gap-1.5 text-[#8E8E93] text-[13px]">
-              <PawPrint size={14} className="text-orange-400 shrink-0" />
-              <span className="truncate font-medium">{client.pet_name}</span>
-            </div>
+            {/* ИЗМЕНЕНИЕ: Показываем лапку ТОЛЬКО если есть животное */}
+            {petName && (
+              <div className="flex items-center gap-1.5 text-[#8E8E93] text-[13px]">
+                <PawPrint size={14} className="text-orange-400 shrink-0" />
+                <span className="truncate font-medium">{petName}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -124,20 +132,22 @@ function ClientCard({ client }: { client: any }) {
         <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-300">
           <div className="pt-3 border-t border-[#F2F2F7] space-y-4">
 
-            {/* Детали питомца (полный текст) */}
-            <div className="bg-[#F2F2F7] rounded-xl p-3">
-              <div className="flex items-start gap-2 mb-1">
-                <span className="text-[11px] font-bold text-[#8E8E93] uppercase mt-0.5">Питомец</span>
-              </div>
-              <p className="text-[15px] font-bold text-black break-words leading-tight">
-                {client.pet_name}
-              </p>
-              {client.pet_breed && (
-                <p className="text-[13px] text-[#48484A] mt-1 break-words">
-                  {client.pet_breed}
+            {/* ИЗМЕНЕНИЕ: Скрываем блок питомца, если его нет */}
+            {petName && (
+              <div className="bg-[#F2F2F7] rounded-xl p-3">
+                <div className="flex items-start gap-2 mb-1">
+                  <span className="text-[11px] font-bold text-[#8E8E93] uppercase mt-0.5">Питомец</span>
+                </div>
+                <p className="text-[15px] font-bold text-black break-words leading-tight">
+                  {petName}
                 </p>
-              )}
-            </div>
+                {petBreed && (
+                  <p className="text-[13px] text-[#48484A] mt-1 break-words">
+                    {petBreed}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Статистика */}
             <div className="grid grid-cols-2 gap-3">

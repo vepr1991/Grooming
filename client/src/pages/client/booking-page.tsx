@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { format, addDays, isSameDay, isBefore, parse, addMinutes, startOfToday } from "date-fns";
+import { format, addDays, isSameDay, isBefore, parse, addMinutes, startOfToday, addMonths, subMonths, isSameMonth } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
   ChevronLeft, ChevronRight, MapPin, Clock, CheckCircle2,
@@ -23,15 +23,13 @@ export function ClientBookingPage() {
   const { data: services = [], isLoading: isServicesLoading } = useServices(salonId);
   const createBookingMutation = useCreateBooking();
 
-  // 👇 ДОБАВЛЯЕМ ЭТОТ БЛОК: Сохраняем салон в историю посещений
+  // Сохраняем салон в историю посещений
   useEffect(() => {
     if (salon) {
       try {
         const history = JSON.parse(localStorage.getItem('visited_salons') || '[]');
-        // Удаляем этот салон, если он уже был в списке (чтобы поднять его на 1 место)
         const filtered = history.filter((s: any) => s.id !== salon.id);
 
-        // Добавляем салон на самый верх списка
         filtered.unshift({
           id: salon.id,
           name: salon.name,
@@ -39,14 +37,12 @@ export function ClientBookingPage() {
           photo_url: salon.photo_url
         });
 
-        // Сохраняем в память (оставляем только 5 последних, чтобы не засорять память)
         localStorage.setItem('visited_salons', JSON.stringify(filtered.slice(0, 5)));
       } catch (e) {
         console.error("Ошибка сохранения истории салонов", e);
       }
     }
   }, [salon]);
-  // 👆 КОНЕЦ БЛОКА
 
   // 2. СОСТОЯНИЕ UI
   const [step, setStep] = useState<Step>('showcase');
@@ -57,12 +53,14 @@ export function ClientBookingPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
 
+  // ИЗМЕНЕНИЕ: Состояние для навигации по месяцам в календаре
+  const [currentMonth, setCurrentMonth] = useState<Date>(startOfToday());
+
   // 4. ДАННЫЕ ФОРМЫ (С ПАМЯТЬЮ)
   // @ts-ignore
   const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
 
   const [formData, setFormData] = useState(() => {
-    // 🧠 Пытаемся достать данные из прошлого визита
     try {
         const saved = localStorage.getItem('client_info');
         const parsed = saved ? JSON.parse(saved) : {};
@@ -71,17 +69,16 @@ export function ClientBookingPage() {
           phone: parsed.phone || '',
           petName: parsed.petName || '',
           petBreed: parsed.petBreed || '',
-          agreed: false
+          agreed: true
         };
     } catch {
-        return { name: tgUser?.first_name || '', phone: '', petName: '', petBreed: '', agreed: false };
+        return { name: tgUser?.first_name || '', phone: '', petName: '', petBreed: '', agreed: true };
     }
   });
 
   // 5. ЗАГРУЗКА ЗАНЯТЫХ СЛОТОВ
   const { data: busySlots = [], isLoading: isSlotsLoading } = useBusySlots(salonId, selectedDate);
 
-  // ОПРЕДЕЛЯЕМ НИШУ
   const isGrooming = salon?.niche !== 'beauty';
 
   // === ЭФФЕКТ: КНОПКА НАЗАД В TELEGRAM ===
@@ -107,6 +104,8 @@ export function ClientBookingPage() {
   }, [step]);
 
   // === ЛОГИКА: Расчет свободных слотов ===
+  const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0);
+
   const freeSlots = useMemo(() => {
     if (!salon?.schedule || selectedServices.length === 0) return [];
 
@@ -118,7 +117,6 @@ export function ClientBookingPage() {
     const slots: string[] = [];
     let current = parse(dayConfig.hours.start, 'HH:mm', selectedDate);
     const endWorkDay = parse(dayConfig.hours.end, 'HH:mm', selectedDate);
-    const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0);
 
     const parseDbDate = (isoStr: string) => new Date(isoStr.split('+')[0].split('Z')[0]);
 
@@ -140,7 +138,15 @@ export function ClientBookingPage() {
       current = addMinutes(current, salon.slot_step || 30);
     }
     return slots;
-  }, [salon, selectedDate, selectedServices, busySlots]);
+  }, [salon, selectedDate, selectedServices, busySlots, totalDuration]);
+
+  // Расчет времени окончания
+  const endTimeStr = useMemo(() => {
+      if (!selectedTime) return "";
+      const start = parse(selectedTime, 'HH:mm', selectedDate);
+      const end = addMinutes(start, totalDuration);
+      return format(end, 'HH:mm');
+  }, [selectedTime, selectedDate, totalDuration]);
 
   const toggleService = (service: Service) => {
       const isSelected = selectedServices.some(s => s.id === service.id);
@@ -156,10 +162,22 @@ export function ClientBookingPage() {
   };
 
   const handleFinish = async () => {
+    if (!formData.phone || formData.phone.length < 11) {
+        toast.error("Введите корректный номер телефона");
+        return;
+    }
+    if (isGrooming && !formData.petName.trim()) {
+        toast.error("Пожалуйста, укажите кличку питомца");
+        return;
+    }
+    if (!formData.agreed) {
+        toast.error("Необходимо согласие на обработку данных");
+        return;
+    }
+
     if (!selectedTime || !salonId) return;
 
     try {
-      // Динамически формируем метаданные
       const metadataParams = isGrooming ? {
           petName: formData.petName,
           petBreed: formData.petBreed
@@ -178,14 +196,11 @@ export function ClientBookingPage() {
         metadata: metadataParams
       });
 
-      // 💾 УМНОЕ СОХРАНЕНИЕ В ПАМЯТЬ (не стираем старые данные из других ниш)
       const existingData = JSON.parse(localStorage.getItem('client_info') || '{}');
-
       localStorage.setItem('client_info', JSON.stringify({
           ...existingData,
           name: formData.name,
           phone: formData.phone,
-          // Обновляем данные питомца ТОЛЬКО если это груминг
           ...(isGrooming && {
               petName: formData.petName,
               petBreed: formData.petBreed
@@ -200,54 +215,145 @@ export function ClientBookingPage() {
     }
   };
 
-  // Валидация кнопки (для Бьюти кличка не нужна)
-  const isFormValid = formData.agreed && formData.phone && (!isGrooming || formData.petName);
-
   if ((isSalonLoading || isServicesLoading) && step !== 'success') {
     return <div className="flex h-screen items-center justify-center bg-[#F2F2F7]"><Loader2 className="animate-spin text-[#007AFF]" size={32}/></div>;
   }
 
   const totalAmount = selectedServices.reduce((sum, s) => sum + s.price, 0);
 
+  let addressUrl = "";
+  let displayAddress = "";
+  if (salon?.address) {
+      const addressUrlMatch = salon.address.match(/(https?:\/\/[^\s]+)/);
+      addressUrl = addressUrlMatch ? addressUrlMatch[0] : `https://2gis.kz/search/${encodeURIComponent(salon.address)}`;
+      displayAddress = salon.address.replace(/(https?:\/\/[^\s]+)/g, '').trim() || salon.address;
+  }
+
+  // ИЗМЕНЕНИЕ: Компонент Календаря для клиента
+  const renderCalendar = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    // Смещение для начала месяца (понедельник = 1)
+    const offset = (new Date(year, month, 1).getDay() || 7) - 1;
+
+    const days: React.ReactNode[] = [];
+
+    // Пустые ячейки для смещения начала месяца
+    for (let i = 0; i < offset; i++) {
+        days.push(<div key={`empty-${i}`} className="h-10" />);
+    }
+
+    // Заполняем дни месяца
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dObj = new Date(year, month, d);
+      const isSelected = isSameDay(dObj, selectedDate);
+      const isPastDay = isBefore(dObj, startOfToday());
+
+      // Проверяем, рабочий ли это день по графику мастера
+      const dayName = format(dObj, 'eeeeee', { locale: ru }).toLowerCase();
+      const dayConfig = salon?.schedule?.find((s: any) => s.day.toLowerCase() === dayName);
+      const isWorking = dayConfig?.isWorking ?? true;
+
+      const isDisabled = isPastDay || !isWorking;
+
+      days.push(
+        <button
+          key={d}
+          disabled={isDisabled}
+          onClick={() => { setSelectedDate(dObj); setSelectedTime(null); }}
+          className={`h-11 w-full rounded-xl text-[15px] font-bold flex items-center justify-center transition-all
+            ${isSelected ? 'bg-[#007AFF] text-white shadow-md' :
+              isDisabled ? 'text-[#C7C7CC] opacity-40 cursor-not-allowed bg-slate-50' :
+              'bg-white text-black border border-slate-100 hover:bg-slate-50 active:bg-slate-100'}`}
+        >
+          {d}
+        </button>
+      );
+    }
+
+    return (
+      <div className="bg-white rounded-[24px] p-4 shadow-sm border border-slate-100 mb-2">
+        {/* Шапка календаря с месяцем и навигацией */}
+        <div className="flex justify-between items-center mb-4 px-2">
+          <span className="font-extrabold text-[17px] capitalize text-black">
+              {format(currentMonth, 'LLLL yyyy', { locale: ru })}
+          </span>
+          <div className="flex gap-2">
+            <button
+              disabled={isBefore(currentMonth, startOfToday()) && !isSameMonth(currentMonth, startOfToday())}
+              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+              className="w-8 h-8 flex items-center justify-center bg-[#F2F2F7] rounded-full text-black disabled:opacity-30 active:scale-95 transition-transform"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+              className="w-8 h-8 flex items-center justify-center bg-[#F2F2F7] rounded-full text-black active:scale-95 transition-transform"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Дни недели */}
+        <div className="grid grid-cols-7 text-center pb-2 text-[11px] font-bold text-[#8E8E93] uppercase tracking-wider">
+            {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(d => <span key={d}>{d}</span>)}
+        </div>
+
+        {/* Сетка дней */}
+        <div className="grid grid-cols-7 gap-1.5">{days}</div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-[#F2F2F7] max-w-md mx-auto overflow-x-hidden font-sans pb-24">
-      {/* ШАПКА */}
-      {step !== 'success' && (
+
+      {step !== 'success' && step !== 'showcase' && (
         <header className="bg-white/80 backdrop-blur-md sticky top-0 z-20 px-5 pt-12 pb-4 border-b border-slate-100 flex items-center gap-4 transition-all">
-          {step !== 'showcase' && (
-            <button onClick={() => setStep(step === 'datetime' ? 'showcase' : 'datetime')} className="text-[#007AFF] active:opacity-50">
-              <ChevronLeft size={28} />
-            </button>
-          )}
+          <button onClick={() => setStep(step === 'details' ? 'datetime' : 'showcase')} className="text-[#007AFF] active:opacity-50">
+            <ChevronLeft size={28} />
+          </button>
           <h1 className="text-[17px] font-bold flex-1 text-center pr-8">
-            {step === 'showcase' ? 'Услуги' : step === 'datetime' ? 'Время' : 'Детали'}
+            {step === 'datetime' ? 'Время' : 'Детали'}
           </h1>
         </header>
       )}
 
       <div className="flex-1 overflow-y-auto no-scrollbar">
+
         {/* ЭКРАН 1: ВИТРИНА */}
         {step === 'showcase' && salon && (
           <div className="animate-in fade-in duration-500">
-            <div className="relative h-56 w-full overflow-hidden">
+            <div className="relative h-64 w-full overflow-hidden bg-slate-200">
               <img src={salon.photo_url || "/placeholder-salon.jpg"} className="w-full h-full object-cover" alt="Salon" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-6">
-                <h2 className="text-white text-2xl font-extrabold tracking-tight">{salon.name}</h2>
-                <div className="flex items-center text-white/90 text-[13px] mt-1 gap-1 font-medium">
-                  <MapPin size={14} className="text-[#007AFF]" /> {salon.address}
-                </div>
-              </div>
+            </div>
+
+            <div className="bg-white px-5 pt-5 pb-5 rounded-b-[24px] shadow-sm mb-4">
+                <h2 className="text-[26px] font-extrabold text-black tracking-tight leading-tight mb-3">
+                    {salon.name}
+                </h2>
+
+                <a
+                    href={addressUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-start gap-2 bg-[#F2F2F7] px-3.5 py-3 rounded-[14px] active:scale-95 transition-transform w-full"
+                >
+                    <MapPin size={18} className="text-[#007AFF] shrink-0 mt-0.5" />
+                    <span className="text-[14px] text-black font-medium leading-snug">{displayAddress}</span>
+                </a>
             </div>
 
             {salon.description && (
-                <div className="p-5 pb-0">
-                    <p className="text-[14px] text-[#3A3A3C] leading-relaxed bg-white p-4 rounded-[20px] shadow-sm">{salon.description}</p>
+                <div className="px-5 pb-4">
+                    <p className="text-[14px] text-[#3A3A3C] leading-relaxed bg-white p-4 rounded-[20px] shadow-sm border border-slate-100">{salon.description}</p>
                 </div>
             )}
 
-            {/* 👇 КНОПКА INSTAGRAM */}
             {salon.instagram_url && (
-                <div className="px-5 pt-4">
+                <div className="px-5 pb-4">
                     <a
                        href={salon.instagram_url.startsWith('http') ? salon.instagram_url : `https://instagram.com/${salon.instagram_url.replace('@', '')}`}
                        target="_blank"
@@ -260,7 +366,7 @@ export function ClientBookingPage() {
             )}
 
             {salon.gallery?.length > 0 && (
-               <div className="p-5 pb-0 space-y-3">
+               <div className="p-5 pt-0 space-y-3">
                    <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 flex items-center gap-2">
                        <ImageIcon size={14}/> Портфолио
                    </h3>
@@ -309,29 +415,17 @@ export function ClientBookingPage() {
           </div>
         )}
 
-        {/* ЭКРАН 2: ВРЕМЯ */}
+        {/* ЭКРАН 2: ВРЕМЯ И КАЛЕНДАРЬ */}
         {step === 'datetime' && (
-          <div className="p-5 space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
-            <section>
-              <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 mb-3">Выберите дату</h3>
-              <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-                {[...Array(14)].map((_, i) => {
-                  const d = addDays(startOfToday(), i);
-                  const isSelected = isSameDay(d, selectedDate);
-                  return (
-                    <button key={i} onClick={() => setSelectedDate(d)} className={`flex flex-col items-center justify-center min-w-[65px] h-[85px] rounded-[20px] transition-all ${isSelected ? 'bg-[#007AFF] text-white shadow-lg' : 'bg-white text-black border border-slate-100'}`}>
-                      <span className={`text-[11px] font-bold uppercase ${isSelected ? 'opacity-80' : 'opacity-40'}`}>
-                        {format(d, 'eee', { locale: ru })}
-                      </span>
-                      <span className="text-[20px] font-black mt-1">{format(d, 'd')}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+          <div className="p-5 space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+
+            {/* Рендерим наш новый календарь */}
+            {renderCalendar()}
 
             <section>
-              <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 mb-3">Доступное время</h3>
+              <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 mb-3 mt-4">
+                Свободное время
+              </h3>
               <div className="relative min-h-[100px]">
                 {isSlotsLoading ? (
                   <div className="flex justify-center py-10"><Loader2 className="animate-spin text-slate-300" /></div>
@@ -342,7 +436,7 @@ export function ClientBookingPage() {
                         {time}
                       </button>
                     )) : (
-                      <div className="col-span-4 text-center py-8 text-[#8E8E93] bg-white rounded-[20px] border border-dashed text-sm">Нет свободных окон 😔</div>
+                      <div className="col-span-4 text-center py-8 text-[#8E8E93] bg-white rounded-[20px] border border-dashed text-[15px] font-medium">Нет свободных окон 😔</div>
                     )}
                   </div>
                 )}
@@ -364,8 +458,15 @@ export function ClientBookingPage() {
                 <div className="absolute top-0 left-0 right-0 h-1.5 bg-[repeating-linear-gradient(45deg,#F2F2F7,#F2F2F7_10px,#fff_10px,#fff_20px)] opacity-50"></div>
                 <div className="flex flex-col gap-4">
                     <div>
-                        <div className="flex items-center gap-2 mb-1"><Calendar size={16} className="text-[#007AFF]"/> <span className="font-bold text-black">{format(selectedDate, 'd MMMM', { locale: ru })}</span></div>
-                        <div className="flex items-center gap-2"><Clock size={16} className="text-[#007AFF]"/> <span className="font-bold text-black">{selectedTime}</span></div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <Calendar size={16} className="text-[#007AFF]"/>
+                            <span className="font-bold text-black">{format(selectedDate, 'd MMMM', { locale: ru })}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Clock size={16} className="text-[#007AFF]"/>
+                            <span className="font-bold text-black">{selectedTime} - {endTimeStr}</span>
+                            <span className="text-[#8E8E93] text-[13px] ml-1">({totalDuration} мин)</span>
+                        </div>
                     </div>
                     <div className="bg-[#F9F9F9] rounded-xl p-3 border border-slate-50 space-y-2">
                         {selectedServices.map(s => (
@@ -389,7 +490,6 @@ export function ClientBookingPage() {
                   <PhoneInput value={formData.phone} onChange={val => setFormData({...formData, phone: val})} className="border-none shadow-none h-auto p-0 text-[17px] font-bold caret-[#007AFF]" />
                </div>
 
-               {/* Скрываем собак, если это маникюр */}
                {isGrooming && (
                    <div className="grid grid-cols-2 gap-3">
                       <InputBlock label="Кличка" value={formData.petName} onChange={(v: string) => setFormData({...formData, petName: v})} placeholder="Арчи" />
@@ -397,7 +497,7 @@ export function ClientBookingPage() {
                    </div>
                )}
 
-               <div className="flex items-center gap-3 p-4 bg-white rounded-[20px] border border-slate-100 shadow-sm" onClick={() => setFormData({...formData, agreed: !formData.agreed})}>
+               <div className="flex items-center gap-3 p-4 bg-white rounded-[20px] border border-slate-100 shadow-sm cursor-pointer" onClick={() => setFormData({...formData, agreed: !formData.agreed})}>
                   <div className={`w-6 h-6 rounded-[8px] border-2 flex items-center justify-center transition-all ${formData.agreed ? 'bg-[#34C759] border-[#34C759]' : 'border-slate-200'}`}>
                     {formData.agreed && <CheckCircle2 size={16} className="text-white" />}
                   </div>
@@ -406,9 +506,9 @@ export function ClientBookingPage() {
             </div>
 
             <button
-              disabled={!isFormValid || createBookingMutation.isPending}
+              disabled={createBookingMutation.isPending}
               onClick={handleFinish}
-              className={`w-full py-4 rounded-[20px] font-black text-[17px] shadow-xl transition-all ${isFormValid ? 'bg-[#34C759] text-white active:scale-95 shadow-green-100' : 'bg-slate-200 text-[#8E8E93] cursor-not-allowed'}`}
+              className="w-full py-4 rounded-[20px] font-black text-[17px] shadow-xl transition-all bg-[#34C759] text-white active:scale-95 shadow-green-100"
             >
               {createBookingMutation.isPending ? <Loader2 className="animate-spin mx-auto"/> : `Записаться (${totalAmount} ₸)`}
             </button>
@@ -423,7 +523,7 @@ export function ClientBookingPage() {
             </div>
             <h2 className="text-[32px] font-black text-black mb-3 tracking-tight">Готово!</h2>
             <p className="text-[17px] text-[#8E8E93] font-bold leading-relaxed mb-12 px-4">
-              Ждем подтверждения от мастера. Уведомление придет сюда.
+              Ждем подтверждения от мастера. Уведомление придет прямо в этот чат с ботом.
             </p>
             <button onClick={() => { setStep('showcase'); setSelectedServices([]); setSelectedTime(null); }} className="w-full py-4 text-[#007AFF] font-bold text-[17px] active:opacity-50">
               На главную

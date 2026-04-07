@@ -26,7 +26,15 @@ async def check_user_status(tg_id: int):
 
 # --- REGISTRATION ---
 @router.post("/api/register")
-async def register_salon(p: SalonCreate):
+async def register_salon(p: SalonCreate, tg_user_id: Optional[int] = Depends(verify_telegram_data)):
+    # 1. Жесткая проверка: запрос точно пришел из Telegram?
+    if not tg_user_id:
+        raise HTTPException(401, "Unauthorized")
+
+    # 2. Жесткая проверка: юзер не пытается зарегистрировать салон на чужой ID?
+    if p.telegram_chat_id != tg_user_id:
+        raise HTTPException(403, "Нельзя зарегистрировать салон на чужой ID")
+
     existing = supabase.table("salons").select("*").eq("telegram_chat_id", p.telegram_chat_id).execute()
     if existing.data: return {"success": True, "data": existing.data[0]}
 
