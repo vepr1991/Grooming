@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
@@ -30,19 +30,18 @@ const queryClient = new QueryClient({
 
 function SelectRolePage() {
   const navigate = useNavigate();
-  const [visitedSalons, setVisitedSalons] = useState<any[]>([]);
 
-  // При загрузке страницы достаем историю салонов из памяти
-  useEffect(() => {
+  // 👇 ИСПРАВЛЕНИЕ: Читаем память телефона СИНХРОННО до первого рендера
+  const [visitedSalons] = useState<any[]>(() => {
     try {
-      const history = JSON.parse(localStorage.getItem('visited_salons') || '[]');
-      setVisitedSalons(history);
+      return JSON.parse(localStorage.getItem('visited_salons') || '[]');
     } catch (e) {
-      setVisitedSalons([]);
+      return [];
     }
-  }, []);
+  });
 
   // === СЦЕНАРИЙ 1: ПОЛЬЗОВАТЕЛЬ УЖЕ БЫЛ В САЛОНАХ ===
+  // Теперь, если салоны есть, React сразу, без задержек отрисует этот экран
   if (visitedSalons.length > 0) {
     return (
       <div className="flex flex-col min-h-screen bg-[#F2F2F7] p-5 font-sans animate-in fade-in duration-500">
@@ -84,6 +83,7 @@ function SelectRolePage() {
   }
 
   // === СЦЕНАРИЙ 2: АБСОЛЮТНО НОВЫЙ ПОЛЬЗОВАТЕЛЬ ===
+  // Этот экран увидят ТОЛЬКО те, у кого кристально чистая история
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-[#F2F2F7] p-6 space-y-8 animate-in fade-in duration-500">
       <div className="text-center space-y-3">
