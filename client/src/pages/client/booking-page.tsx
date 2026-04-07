@@ -655,7 +655,8 @@ const InputBlock = ({ label, value, onChange, placeholder }: any) => (
 
 // Карточка истории записей клиента
 const HistoryCard = ({ app, isPast }: { app: any, isPast?: boolean }) => {
-    const sTime = new Date(app.start_time);
+    // ИСПРАВЛЕНИЕ 1: Отрезаем часовой пояс (+00 или Z), чтобы браузер не плюсовал 5 часов
+    const sTime = new Date(app.start_time.split('+')[0].split('Z')[0]);
 
     let services = [];
     if (app.selected_services && app.selected_services.length > 0) services = app.selected_services;
@@ -687,11 +688,7 @@ const HistoryCard = ({ app, isPast }: { app: any, isPast?: boolean }) => {
                 <div className="text-[14px] font-medium text-slate-700 truncate">{displayService}</div>
                 <div className="text-[14px] font-bold">{totalAmount} ₸</div>
             </div>
-            {app.salons?.phone && !isPast && app.status !== 'canceled' && (
-                <a href={`tel:${app.salons.phone.replace(/[^0-9+]/g, '')}`} className="mt-3 w-full py-3 bg-slate-50 text-black font-bold text-[14px] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-transform">
-                   Позвонить мастеру
-                </a>
-            )}
+            {/* ИСПРАВЛЕНИЕ 2: Убрали неработающую кнопку звонка для чистоты интерфейса */}
         </div>
     );
 };
