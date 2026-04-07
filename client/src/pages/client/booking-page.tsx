@@ -327,7 +327,7 @@ export function ClientBookingPage() {
         {step === 'showcase' && salon && (
           <div className="animate-in fade-in duration-500">
             <div className="relative h-64 w-full overflow-hidden bg-slate-200">
-              <img src={salon.photo_url || "/placeholder-salon.jpg"} className="w-full h-full object-cover" alt="Salon" />
+              <img src={salon.photo_url || "/placeholder-salon.jpg"} loading="lazy" className="w-full h-full object-cover" alt="Salon" />
             </div>
 
             <div className="bg-white px-5 pt-5 pb-5 rounded-b-[24px] shadow-sm mb-4">
@@ -393,7 +393,8 @@ export function ClientBookingPage() {
                   >
                     <div className="flex gap-4">
                         <div className="w-20 h-20 rounded-[18px] bg-slate-100 overflow-hidden shrink-0">
-                            {s.image_url && <img src={s.image_url} className="w-full h-full object-cover" />}
+                            {s.image_url && <img src={s.image_url} loading="lazy"
+                             className="w-full h-full object-cover" />}
                         </div>
                         <div className="flex-1 flex flex-col justify-between py-0.5">
                             <div>

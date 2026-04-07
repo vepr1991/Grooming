@@ -529,7 +529,7 @@ function AppointmentCard({ app, onStatusUpdate, onDeleteBlock }: { app: Appointm
         <div className="px-4 pb-4 space-y-4 animate-in slide-in-from-top-2 duration-300">
           <div className="pt-3 border-t flex gap-4">
             <div className="w-16 h-16 rounded-[14px] bg-slate-50 overflow-hidden shrink-0 flex items-center justify-center">
-              {displayImage ? <img src={displayImage} className="w-full h-full object-cover" /> : <User className="text-slate-300" size={28} />}
+              {displayImage ? <img src={displayImage} loading="lazy" className="w-full h-full object-cover" /> : <User className="text-slate-300" size={28} />}
             </div>
             <div className="space-y-1.5 flex-1 min-w-0">
               <div className="font-bold text-sm text-black">{displaySubtitle}</div>

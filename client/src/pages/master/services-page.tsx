@@ -216,7 +216,7 @@ export function MasterServicesPage() {
               <div className="flex flex-col items-center gap-3 mb-2">
                 <div className="w-32 h-32 rounded-3xl bg-white border border-slate-100 shadow-sm overflow-hidden flex items-center justify-center relative group shrink-0">
                   {formData.image_url ? (
-                    <img src={formData.image_url} className="absolute inset-0 w-full h-full object-cover" alt="Service" />
+                    <img src={formData.image_url} loading="lazy" className="absolute inset-0 w-full h-full object-cover" alt="Service" />
                   ) : (
                     <ImageIcon size={48} className="text-[#C7C7CC]" />
                   )}
@@ -347,7 +347,7 @@ function ServiceCard({ service, onDelete, onEdit }: { service: Service; onDelete
       <div className="p-4 flex gap-4 items-center">
         <div className="w-14 h-14 rounded-xl bg-[#F2F2F7] flex items-center justify-center shrink-0 shadow-inner overflow-hidden relative">
           {service.image_url ? (
-            <img src={service.image_url} className="absolute inset-0 w-full h-full object-cover" alt={service.title} />
+            <img src={service.image_url} loading="lazy" className="absolute inset-0 w-full h-full object-cover" alt={service.title} />
           ) : (
             <Scissors size={24} className="text-[#8E8E93] opacity-40" />
           )}

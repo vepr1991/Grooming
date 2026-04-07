@@ -188,7 +188,7 @@ export function MasterProfilePage() {
         <div className="relative group">
           <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-white shadow-xl bg-white flex items-center justify-center relative">
              {formData.photo_url ? (
-               <img src={formData.photo_url} className="w-full h-full object-cover" alt="Salon" />
+               <img src={formData.photo_url} loading="lazy" className="w-full h-full object-cover" alt="Salon" />
              ) : (
                <Scissors size={40} className="text-[#C7C7CC]" />
              )}
@@ -233,7 +233,7 @@ export function MasterProfilePage() {
                     {/* Список фото */}
                     {formData.gallery.map((url, idx) => (
                         <div key={idx} className="relative aspect-square rounded-xl overflow-hidden bg-slate-100 group">
-                            <img src={url} className="w-full h-full object-cover" alt="Work" />
+                            <img src={url} loading="lazy" className="w-full h-full object-cover" alt="Work" />
                             {isEditing && (
                                 <button
                                     onClick={() => removeGalleryPhoto(idx)}
