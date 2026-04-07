@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, memo, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { format, addDays, isSameDay, isBefore, parse, addMinutes, startOfToday, addMonths, subMonths, isSameMonth } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -14,6 +14,87 @@ import { useSalon, useServices, useBusySlots, useCreateBooking, type Service } f
 
 // Типы состояний
 type Step = 'showcase' | 'datetime' | 'details' | 'success';
+
+// ИЗМЕНЕНИЕ: Оптимизированный компонент календаря (Не перерисовывается при вводе в форму)
+const ClientCalendarGrid = memo(({
+  currentMonth,
+  selectedDate,
+  schedule,
+  setCurrentMonth,
+  onSelectDate
+}: {
+  currentMonth: Date;
+  selectedDate: Date;
+  schedule: any;
+  setCurrentMonth: (d: Date) => void;
+  onSelectDate: (d: Date) => void;
+}) => {
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const offset = (new Date(year, month, 1).getDay() || 7) - 1;
+
+  const days: React.ReactNode[] = [];
+
+  for (let i = 0; i < offset; i++) {
+      days.push(<div key={`empty-${i}`} className="h-10" />);
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dObj = new Date(year, month, d);
+    const isSelected = isSameDay(dObj, selectedDate);
+    const isPastDay = isBefore(dObj, startOfToday());
+
+    const dayName = format(dObj, 'eeeeee', { locale: ru }).toLowerCase();
+    const dayConfig = schedule?.find((s: any) => s.day.toLowerCase() === dayName);
+    const isWorking = dayConfig?.isWorking ?? true;
+
+    const isDisabled = isPastDay || !isWorking;
+
+    days.push(
+      <button
+        key={d}
+        disabled={isDisabled}
+        onClick={() => onSelectDate(dObj)}
+        className={`h-11 w-full rounded-xl text-[15px] font-bold flex items-center justify-center transition-all
+          ${isSelected ? 'bg-[#007AFF] text-white shadow-md' :
+            isDisabled ? 'text-[#C7C7CC] opacity-40 cursor-not-allowed bg-slate-50' :
+            'bg-white text-black border border-slate-100 hover:bg-slate-50 active:bg-slate-100'}`}
+      >
+        {d}
+      </button>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-[24px] p-4 shadow-sm border border-slate-100 mb-2">
+      <div className="flex justify-between items-center mb-4 px-2">
+        <span className="font-extrabold text-[17px] capitalize text-black">
+            {format(currentMonth, 'LLLL yyyy', { locale: ru })}
+        </span>
+        <div className="flex gap-2">
+          <button
+            disabled={isBefore(currentMonth, startOfToday()) && !isSameMonth(currentMonth, startOfToday())}
+            onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+            className="w-8 h-8 flex items-center justify-center bg-[#F2F2F7] rounded-full text-black disabled:opacity-30 active:scale-95 transition-transform"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <button
+            onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+            className="w-8 h-8 flex items-center justify-center bg-[#F2F2F7] rounded-full text-black active:scale-95 transition-transform"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-7 text-center pb-2 text-[11px] font-bold text-[#8E8E93] uppercase tracking-wider">
+          {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(d => <span key={d}>{d}</span>)}
+      </div>
+      <div className="grid grid-cols-7 gap-1.5">{days}</div>
+    </div>
+  );
+});
 
 export function ClientBookingPage() {
   const { salonId } = useParams();
@@ -53,7 +134,6 @@ export function ClientBookingPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
 
-  // ИЗМЕНЕНИЕ: Состояние для навигации по месяцам в календаре
   const [currentMonth, setCurrentMonth] = useState<Date>(startOfToday());
 
   // 4. ДАННЫЕ ФОРМЫ (С ПАМЯТЬЮ)
@@ -102,6 +182,12 @@ export function ClientBookingPage() {
           tg.BackButton.hide();
       };
   }, [step]);
+
+  // ИЗМЕНЕНИЕ: Стабильный обработчик выбора даты
+  const handleDateSelect = useCallback((d: Date) => {
+    setSelectedDate(d);
+    setSelectedTime(null);
+  }, []);
 
   // === ЛОГИКА: Расчет свободных слотов ===
   const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0);
@@ -229,84 +315,6 @@ export function ClientBookingPage() {
       displayAddress = salon.address.replace(/(https?:\/\/[^\s]+)/g, '').trim() || salon.address;
   }
 
-  // ИЗМЕНЕНИЕ: Компонент Календаря для клиента
-  const renderCalendar = () => {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    // Смещение для начала месяца (понедельник = 1)
-    const offset = (new Date(year, month, 1).getDay() || 7) - 1;
-
-    const days: React.ReactNode[] = [];
-
-    // Пустые ячейки для смещения начала месяца
-    for (let i = 0; i < offset; i++) {
-        days.push(<div key={`empty-${i}`} className="h-10" />);
-    }
-
-    // Заполняем дни месяца
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dObj = new Date(year, month, d);
-      const isSelected = isSameDay(dObj, selectedDate);
-      const isPastDay = isBefore(dObj, startOfToday());
-
-      // Проверяем, рабочий ли это день по графику мастера
-      const dayName = format(dObj, 'eeeeee', { locale: ru }).toLowerCase();
-      const dayConfig = salon?.schedule?.find((s: any) => s.day.toLowerCase() === dayName);
-      const isWorking = dayConfig?.isWorking ?? true;
-
-      const isDisabled = isPastDay || !isWorking;
-
-      days.push(
-        <button
-          key={d}
-          disabled={isDisabled}
-          onClick={() => { setSelectedDate(dObj); setSelectedTime(null); }}
-          className={`h-11 w-full rounded-xl text-[15px] font-bold flex items-center justify-center transition-all
-            ${isSelected ? 'bg-[#007AFF] text-white shadow-md' :
-              isDisabled ? 'text-[#C7C7CC] opacity-40 cursor-not-allowed bg-slate-50' :
-              'bg-white text-black border border-slate-100 hover:bg-slate-50 active:bg-slate-100'}`}
-        >
-          {d}
-        </button>
-      );
-    }
-
-    return (
-      <div className="bg-white rounded-[24px] p-4 shadow-sm border border-slate-100 mb-2">
-        {/* Шапка календаря с месяцем и навигацией */}
-        <div className="flex justify-between items-center mb-4 px-2">
-          <span className="font-extrabold text-[17px] capitalize text-black">
-              {format(currentMonth, 'LLLL yyyy', { locale: ru })}
-          </span>
-          <div className="flex gap-2">
-            <button
-              disabled={isBefore(currentMonth, startOfToday()) && !isSameMonth(currentMonth, startOfToday())}
-              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-              className="w-8 h-8 flex items-center justify-center bg-[#F2F2F7] rounded-full text-black disabled:opacity-30 active:scale-95 transition-transform"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button
-              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-              className="w-8 h-8 flex items-center justify-center bg-[#F2F2F7] rounded-full text-black active:scale-95 transition-transform"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
-        </div>
-
-        {/* Дни недели */}
-        <div className="grid grid-cols-7 text-center pb-2 text-[11px] font-bold text-[#8E8E93] uppercase tracking-wider">
-            {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(d => <span key={d}>{d}</span>)}
-        </div>
-
-        {/* Сетка дней */}
-        <div className="grid grid-cols-7 gap-1.5">{days}</div>
-      </div>
-    );
-  };
-
   return (
     <div className="flex flex-col min-h-screen bg-[#F2F2F7] max-w-md mx-auto overflow-x-hidden font-sans pb-24">
 
@@ -420,8 +428,14 @@ export function ClientBookingPage() {
         {step === 'datetime' && (
           <div className="p-5 space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
 
-            {/* Рендерим наш новый календарь */}
-            {renderCalendar()}
+            {/* ИЗМЕНЕНИЕ: Используем мемоизированный календарь */}
+            <ClientCalendarGrid
+              currentMonth={currentMonth}
+              selectedDate={selectedDate}
+              schedule={salon?.schedule}
+              setCurrentMonth={setCurrentMonth}
+              onSelectDate={handleDateSelect}
+            />
 
             <section>
               <h3 className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider ml-1 mb-3 mt-4">
