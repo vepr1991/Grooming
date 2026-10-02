@@ -53,7 +53,10 @@ export default function App() {
   );
 }
 function Authenticated({ start }: { start: string }) {
-  const me = useLoad(() => api<Me>("/me"), []);
+  const me = useLoad(
+    () => (tg()?.initData ? api<Me>("/me") : Promise.resolve(null)),
+    [],
+  );
   const [orgId, setOrgId] = useState(""),
     [operator, setOperator] = useState(false),
     [inviteDone, setInviteDone] = useState(false),
