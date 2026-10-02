@@ -1,16 +1,49 @@
-version: '3.8'
-
 services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./backend:/app  # Чтобы код обновлялся без перезагрузки контейнера (Hot Reload)
+  db:
+    image: postgres:16-alpine
     environment:
-      - PORT=8000
-    # Создай файл .env внутри папки backend для локальных тестов
-    env_file:
-      - ./backend/.env
+      POSTGRES_DB: grooming
+      POSTGRES_USER: grooming
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:-local-development-only}
+    volumes:
+      - crm_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grooming -d grooming"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+  migrate:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://grooming:${LOCAL_DB_PASSWORD:-local-development-only}@db:5432/grooming
+    command: python migrate.py
+    depends_on:
+      db:
+        condition: service_healthy
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://grooming:${LOCAL_DB_PASSWORD:-local-development-only}@db:5432/grooming
+      APP_URL: http://localhost:8080
+      FORWARDED_ALLOW_IPS: '*'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  worker:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://grooming:${LOCAL_DB_PASSWORD:-local-development-only}@db:5432/grooming
+      APP_URL: http://localhost:8080
+    command: python worker.py
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  web:
+    build: ./client
+    ports: ["127.0.0.1:8080:80"]
+    depends_on: [backend]
+volumes:
+  crm_data:

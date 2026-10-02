@@ -1,97 +1,178 @@
-from pydantic import BaseModel, Field, validator
-from typing import Optional, Dict, Any, List
 import re
+from datetime import date, datetime, time
+from typing import Literal
+from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-# --- КЛИЕНТЫ ---
-class ClientInfo(BaseModel):
-    name: str = Field(..., min_length=2, max_length=50)
-    phone: str = Field(..., min_length=5, max_length=20)
-    telegram_user: Optional[Dict[str, Any]] = None
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-    @validator('phone')
-    def v_phone(cls, v):
-        if not re.match(r'^[\d\+\-\(\)\s]+$', v): raise ValueError('Bad phone')
+
+class Input(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+class OrganizationInput(Input):
+    name: str = Field(min_length=2, max_length=100)
+    address: str = Field(default="", max_length=300)
+    phone: str = Field(default="", max_length=30)
+    timezone: str = "Asia/Almaty"
+    currency: Literal["KZT", "RUB", "USD", "EUR"] = "KZT"
+    slot_step: int = Field(default=30, ge=5, le=120)
+
+    @field_validator("timezone")
+    @classmethod
+    def valid_zone(cls, v):
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("Неизвестный часовой пояс")
         return v
 
-# Класс PetInfo удален, так как мы перешли на гибкие метаданные
 
-# --- УСЛУГИ (В ЗАПИСИ) ---
-class ServiceInfo(BaseModel):
-    id: str
-    title: str
-    price: int
-    duration_minutes: int = Field(..., gt=0)
+class ClientInput(Input):
+    name: str = Field(min_length=2, max_length=100)
+    phone: str
+    notes: str = Field(default="", max_length=2000)
 
-# --- БРОНИРОВАНИЕ ---
-class BookingRequest(BaseModel):
-    salonId: str
-    services: List[ServiceInfo]
-    date: str
-    time: str
-    client: ClientInfo
-    # ИЗМЕНЕНИЕ: Заменили жесткую привязку к питомцам на универсальные метаданные
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    @field_validator("phone")
+    @classmethod
+    def phone_number(cls, v):
+        digits = re.sub(r"[^0-9]", "", v)
+        if len(digits) == 11 and digits[0] == "8":
+            digits = "7" + digits[1:]
+        if not 10 <= len(digits) <= 15:
+            raise ValueError("Укажите телефон с кодом страны")
+        return "+" + digits
 
-class BlockRequest(BaseModel):
-    salonId: str
-    date: str
-    time: str
-    duration_minutes: int = Field(..., gt=0)
-    reason: Optional[str] = "Перерыв"
 
-class StatusUpdate(BaseModel):
-    status: str = Field(..., pattern="^(pending|confirmed|completed|canceled|blocked)$")
+class PetInput(Input):
+    name: str = Field(min_length=1, max_length=100)
+    breed: str = Field(default="", max_length=100)
+    notes: str = Field(default="", max_length=2000)
 
-# --- САЛОН ---
-class SalonCreate(BaseModel):
-    telegram_chat_id: int
-    name: str = Field(..., min_length=2, max_length=50)
-    # ИЗМЕНЕНИЕ: Добавили поле niche для онбординга
-    niche: str = Field(default="grooming", pattern="^(grooming|beauty|auto|other)$")
-    address: Optional[str] = ""
-    phone: Optional[str] = ""
-    slot_step: Optional[int] = 30
 
-class SalonUpdate(BaseModel):
-    name: Optional[str] = None
-    # ИЗМЕНЕНИЕ: Позволяем обновлять нишу
-    niche: Optional[str] = None
-    address: Optional[str] = None
-    phone: Optional[str] = None
-    description: Optional[str] = None
-    schedule: Optional[str] = None
-    photo_url: Optional[str] = None
-    gallery: Optional[List[str]] = None
-    slot_step: Optional[int] = None
-    instagram_url: Optional[str] = None
+class ServiceInput(Input):
+    title: str = Field(min_length=2, max_length=100)
+    price_minor: int = Field(ge=0, le=100000000)
+    duration_minutes: int = Field(ge=5, le=480)
+    member_ids: list[UUID] = Field(min_length=1, max_length=100)
+    active: bool = True
 
-# --- УСЛУГИ (СОЗДАНИЕ/РЕДАКТИРОВАНИЕ) ---
-class ServiceCreate(BaseModel):
-    salon_id: str
-    title: str = Field(..., min_length=2, max_length=50)
-    description: Optional[str] = ""
-    price: int = Field(..., ge=0)
-    duration_minutes: int = Field(..., gt=0)
-    image_url: Optional[str] = None
 
-class ServiceUpdate(BaseModel):
-    title: Optional[str] = None
-    price: Optional[int] = None
-    duration_minutes: Optional[int] = None
-    description: Optional[str] = None
-    image_url: Optional[str] = None
+class InviteInput(Input):
+    name: str = Field(min_length=2, max_length=100)
+    role: Literal["admin", "groomer"] = "groomer"
 
-# --- ТОВАРЫ (НОВОЕ) ---
-class ProductCreate(BaseModel):
-    salon_id: str
-    title: str = Field(..., min_length=2, max_length=100)
-    description: Optional[str] = ""
-    price: int = Field(..., ge=0)
-    image_url: Optional[str] = None
 
-class ProductUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    price: Optional[int] = None
-    image_url: Optional[str] = None
-    is_active: Optional[bool] = None
+class AcceptInvite(Input):
+    token: str = Field(min_length=20, max_length=100)
+
+
+class MemberInput(Input):
+    name: str = Field(min_length=2, max_length=100)
+    role: Literal["owner", "admin", "groomer"]
+    active: bool = True
+    bookable: bool = True
+
+
+class WorkDay(Input):
+    weekday: int = Field(ge=0, le=6)
+    start_time: time
+    end_time: time
+
+    @model_validator(mode="after")
+    def valid_hours(self):
+        if self.start_time >= self.end_time:
+            raise ValueError("Конец должен быть позже начала")
+        if self.start_time.tzinfo or self.end_time.tzinfo:
+            raise ValueError("Укажите местное время")
+        return self
+
+
+class ScheduleInput(Input):
+    days: list[WorkDay] = Field(max_length=7)
+
+    @model_validator(mode="after")
+    def unique_days(self):
+        if len({d.weekday for d in self.days}) != len(self.days):
+            raise ValueError("Дни повторяются")
+        return self
+
+
+class ExceptionInput(Input):
+    day: date
+    start_time: time | None = None
+    end_time: time | None = None
+
+    @model_validator(mode="after")
+    def valid_hours(self):
+        if (self.start_time is None) != (self.end_time is None):
+            raise ValueError("Заполните оба времени")
+        if self.start_time is not None:
+            if self.start_time >= self.end_time:
+                raise ValueError("Некорректное время")
+            if self.start_time.tzinfo or self.end_time.tzinfo:
+                raise ValueError("Укажите местное время")
+        return self
+
+
+class BookingInput(Input):
+    member_id: UUID
+    service_ids: list[UUID] = Field(min_length=1, max_length=10)
+    start_time: datetime
+    client: ClientInput
+    pet: PetInput
+    request_key: UUID
+
+    @field_validator("start_time")
+    @classmethod
+    def aware(cls, v):
+        if v.tzinfo is None:
+            raise ValueError("Время должно содержать часовой пояс")
+        return v
+
+    @field_validator("service_ids")
+    @classmethod
+    def unique(cls, v):
+        if len(set(v)) != len(v):
+            raise ValueError("Услуги повторяются")
+        return v
+
+
+class ManualBooking(BookingInput):
+    client_id: UUID | None = None
+    pet_id: UUID | None = None
+
+
+class MoveInput(Input):
+    member_id: UUID
+    start_time: datetime
+    version: int = Field(ge=1)
+    _aware = field_validator("start_time")(BookingInput.aware.__func__)
+
+
+class StatusInput(Input):
+    status: Literal["pending", "confirmed", "completed", "canceled", "no_show"]
+    version: int = Field(ge=1)
+
+
+class BlockInput(Input):
+    member_id: UUID
+    start_time: datetime
+    duration_minutes: int = Field(ge=5, le=1440)
+    reason: str = Field(default="Перерыв", max_length=200)
+    _aware = field_validator("start_time")(BookingInput.aware.__func__)
+
+
+class PaymentInput(Input):
+    amount_minor: int = Field(gt=0, le=100000000)
+    kind: Literal["payment", "refund"] = "payment"
+    method: Literal["cash", "transfer", "card"] = "transfer"
+    note: str = Field(default="", max_length=500)
+    request_key: UUID
+
+
+class SubscriptionPayment(Input):
+    amount_minor: int = Field(gt=0, le=100000000)
+    reference: str = Field(min_length=3, max_length=300)
+    request_key: UUID

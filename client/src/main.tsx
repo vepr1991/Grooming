@@ -1,65 +1,37 @@
-import React, { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
-
-// Компонент-ловушка для ошибок
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false, error: null };
+import React from "react";
+import { createRoot } from "react-dom/client";
+import "./index.css";
+import App from "./App";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+const queryClient = new QueryClient();
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
   }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error("Uncaught error:", error, errorInfo);
-  }
-
   render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{ padding: 20, color: 'red', fontFamily: 'monospace', wordBreak: 'break-word' }}>
-          <h1>💥 Что-то сломалось</h1>
-          <h3>Ошибка:</h3>
-          <pre style={{ background: '#eee', padding: 10, borderRadius: 5, color: '#333' }}>
-            {this.state.error?.toString()}
-          </pre>
-          <h3>Стек:</h3>
-          <pre style={{ fontSize: 10, color: '#666' }}>
-             {this.state.error?.stack}
-          </pre>
-          <button
-            onClick={() => window.location.reload()}
-            style={{ marginTop: 20, padding: '10px 20px', fontSize: 16 }}
-          >
-            Перезагрузить
-          </button>
-        </div>
-      );
-    }
-
-    return this.props.children;
+    return this.state.failed ? (
+      <main style={{ padding: 40 }}>
+        <h1>Не удалось открыть страницу</h1>
+        <p>
+          Обновите приложение. Если ошибка повторяется, обратитесь к оператору.
+        </p>
+        <button onClick={() => window.location.reload()}>Обновить</button>
+      </main>
+    ) : (
+      this.props.children
+    );
   }
 }
-
-// Запуск с защитой
-const rootElement = document.getElementById('root');
-
-if (!rootElement) {
-  document.body.innerHTML = '<div style="color:red">CRITICAL: id="root" not found in index.html</div>';
-} else {
-  try {
-    createRoot(rootElement).render(
-      <StrictMode>
-        <ErrorBoundary>
-          <App />
-        </ErrorBoundary>
-      </StrictMode>,
-    )
-  } catch (e) {
-    rootElement.innerHTML = `<div style="color:red">CRITICAL STARTUP ERROR: ${e}</div>`;
-  }
-}
+createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </ErrorBoundary>
+  </React.StrictMode>,
+);

@@ -1,162 +1,412 @@
-import { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/sonner";
-import { toast } from "sonner";
-import { Scissors, User, ChevronRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  CalendarDays,
+  Users,
+  Scissors,
+  Settings,
+  ChartNoAxesCombined,
+  PawPrint,
+  Menu,
+  ShieldCheck,
+} from "lucide-react";
+import { api, dateTime, tg } from "./crm/api";
+import type { Member, Organization, Subscription } from "./crm/api";
+import { Action, Field, Form, Load } from "./crm/ui";
+import { useLoad } from "./crm/hooks";
+import { minor, str } from "./crm/form-data";
+import { Booking } from "./crm/Booking";
+import { Dashboard } from "./crm/Dashboard";
+import { Clients } from "./crm/Clients";
+import { Services, Team, Profile, Analytics } from "./crm/Settings";
+import "./crm/crm.css";
 
-// 👇 ИСПРАВЛЕНИЕ: Вернули правильный импорт твоего файла
-import { AuthCheck } from "@/components/auth-check";
-
-import { MasterLayout } from "@/components/layout/master-layout";
-import { ClientLayout } from "@/components/layout/client-layout";
-import { MasterDashboardPage } from "@/pages/master/dashboard-page";
-import { MasterServicesPage } from "@/pages/master/services-page";
-import { MasterProfilePage } from "@/pages/master/profile-page";
-import { MasterRegisterPage } from "@/pages/master/register-page";
-import { MasterClientsPage } from "@/pages/master/clients-page";
-import { ClientBookingPage } from "@/pages/client/booking-page";
-
-// Создаем клиент для React Query
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      retry: 1,
-      staleTime: 1000 * 60 * 5,
-    },
-  },
-});
-
-function SelectRolePage() {
-  const navigate = useNavigate();
-  const [visitedSalons, setVisitedSalons] = useState<any[]>([]);
-
-  // При загрузке страницы достаем историю салонов из памяти
+type Me = {
+  user: { id: number; first_name: string };
+  organizations: (Organization & { role: string; member_id: string })[];
+  is_operator: boolean;
+};
+export default function App() {
   useEffect(() => {
-    try {
-      const history = JSON.parse(localStorage.getItem('visited_salons') || '[]');
-      setVisitedSalons(history);
-    } catch (e) {
-      setVisitedSalons([]);
-    }
+    tg()?.ready();
+    tg()?.expand();
   }, []);
-
-  // === СЦЕНАРИЙ 1: ПОЛЬЗОВАТЕЛЬ УЖЕ БЫЛ В САЛОНАХ ===
-  if (visitedSalons.length > 0) {
+  const path = window.location.pathname.match(
+    /^\/(?:book|client)\/([a-f0-9-]{36})\/?$/i,
+  );
+  const start =
+    tg()?.initDataUnsafe?.start_param ||
+    new URLSearchParams(window.location.search).get("tgWebAppStartParam") ||
+    "";
+  if (path || start.startsWith("salon_"))
     return (
-      <div className="flex flex-col min-h-screen bg-[#F2F2F7] p-5 font-sans animate-in fade-in duration-500">
-        <h1 className="text-[28px] font-extrabold text-black mb-6 mt-8 tracking-tight">Мои салоны</h1>
-
-        <div className="space-y-3 flex-1">
-          {visitedSalons.map((salon: any) => (
-            <button
-              key={salon.id}
-              onClick={() => navigate(`/client/${salon.id}`)}
-              className="w-full bg-white p-4 rounded-[24px] shadow-sm border border-slate-100 flex items-center gap-4 active:scale-95 transition-all group"
-            >
-              <div className="w-16 h-16 rounded-[18px] bg-slate-50 overflow-hidden shrink-0 flex items-center justify-center border border-slate-100">
-                {salon.photo_url ? (
-                  <img src={salon.photo_url} className="w-full h-full object-cover" alt={salon.name} />
-                ) : (
-                  <span className="text-[28px]">
-                    {salon.niche === 'beauty' ? '💅' : salon.niche === 'grooming' ? '🐶' : '✨'}
-                  </span>
-                )}
-              </div>
-              <div className="text-left flex-1">
-                <h3 className="font-bold text-[18px] text-black leading-tight">{salon.name}</h3>
-                <p className="text-[14px] text-[#007AFF] font-bold mt-1">Записаться снова</p>
-              </div>
-              <ChevronRight className="text-[#C7C7CC] mr-2" size={20} />
-            </button>
-          ))}
-        </div>
-
-        <button
-          onClick={() => navigate('/master/register')}
-          className="mt-8 py-4 text-[#8E8E93] text-[15px] font-medium w-full active:opacity-50"
-        >
-          Вы мастер? Открыть свой бизнес
-        </button>
-      </div>
+      <main className="crm public-shell">
+        <a className="brand" href="/">
+          <PawPrint /> Grooming CRM
+        </a>
+        <Booking orgId={path ? path[1] : start.slice(6)} />
+        <footer>Запись в салон · Grooming CRM</footer>
+      </main>
     );
-  }
-
-  // === СЦЕНАРИЙ 2: АБСОЛЮТНО НОВЫЙ ПОЛЬЗОВАТЕЛЬ ===
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-[#F2F2F7] p-6 space-y-8 animate-in fade-in duration-500">
-      <div className="text-center space-y-3">
-        <h1 className="text-3xl font-black text-black tracking-tight">Grooming App</h1>
-        <p className="text-[#8E8E93] font-medium px-4">Удобная запись для клиентов и управление для мастеров</p>
-      </div>
-
-      <div className="w-full max-w-sm space-y-4">
-        <button
-          onClick={() => navigate('/master/register')}
-          className="w-full bg-white p-6 rounded-[24px] shadow-sm border border-slate-100 flex items-center gap-5 active:scale-95 transition-all group"
-        >
-          <div className="w-14 h-14 bg-[#007AFF]/10 rounded-2xl flex items-center justify-center text-[#007AFF] group-active:scale-110 transition-transform">
-            <Scissors size={28} />
-          </div>
-          <div className="text-left">
-            <h3 className="font-bold text-xl text-black">Я Мастер</h3>
-            <p className="text-[13px] text-[#8E8E93] font-medium mt-0.5">Создать салон и расписание</p>
-          </div>
-        </button>
-
-        <button
-          onClick={() => {
-            toast.info("Перейдите по ссылке от вашего мастера, чтобы записаться", {
-              position: 'bottom-center'
-            });
-          }}
-          className="w-full bg-white p-6 rounded-[24px] shadow-sm border border-slate-100 flex items-center gap-5 active:scale-95 transition-all group"
-        >
-          <div className="w-14 h-14 bg-[#34C759]/10 rounded-2xl flex items-center justify-center text-[#34C759] group-active:scale-110 transition-transform">
-            <User size={28} />
-          </div>
-          <div className="text-left">
-            <h3 className="font-bold text-xl text-black">Я Клиент</h3>
-            <p className="text-[13px] text-[#8E8E93] font-medium mt-0.5">У меня есть ссылка</p>
-          </div>
-        </button>
-      </div>
+    <div className="crm">
+      <Authenticated start={start} />
     </div>
   );
 }
-
-function App() {
+function Authenticated({ start }: { start: string }) {
+  const me = useLoad(() => api<Me>("/me"), []);
+  const [orgId, setOrgId] = useState(""),
+    [operator, setOperator] = useState(false),
+    [inviteDone, setInviteDone] = useState(false);
+  const config = useLoad(() => api<{ bot_username: string }>("/config"), []);
+  if (!tg()?.initData)
+    return (
+      <main className="welcome">
+        <div className="logo-mark">
+          <PawPrint size={38} />
+        </div>
+        <p className="eyebrow">Больше заботы. Меньше рутины.</p>
+        <h1>
+          Ваш салон.
+          <br />
+          Всё под рукой.
+        </h1>
+        <p>Клиенты, питомцы и расписание команды — в одном кабинете.</p>
+        {config.data?.bot_username ? (
+          <a
+            className="primary link-button"
+            href={`https://t.me/${config.data.bot_username}?startapp`}
+          >
+            Открыть в Telegram
+          </a>
+        ) : (
+          <p className="muted">
+            Откройте Mini App через Telegram-бота салона. Имя бота на сервере
+            ещё не настроено.
+          </p>
+        )}
+      </main>
+    );
+  if (!me.data)
+    return (
+      <main className="welcome">
+        <Load {...me} />
+        <button onClick={me.reload}>Повторить</button>
+      </main>
+    );
+  if (start.startsWith("invite_") && !inviteDone)
+    return (
+      <main className="welcome">
+        <h1>Приглашение в команду</h1>
+        <p>Нажмите, чтобы присоединиться к компании.</p>
+        <Action
+          run={async () => {
+            const result = await api<{ org_id: string }>(
+              "/invitations/accept",
+              "POST",
+              { token: start.slice(7) },
+            );
+            setOrgId(result.org_id);
+            setInviteDone(true);
+            me.reload();
+          }}
+        >
+          Принять приглашение
+        </Action>
+        <button onClick={() => setInviteDone(true)}>Вернуться в кабинет</button>
+      </main>
+    );
+  if (operator && me.data.is_operator)
+    return (
+      <div className="operator-shell">
+        <button onClick={() => setOperator(false)}>← Кабинет</button>
+        <Operator />
+      </div>
+    );
+  if (me.data.organizations.length === 0)
+    return (
+      <main className="welcome register">
+        <p className="eyebrow">Начнём с вашего салона</p>
+        <h1>Добро пожаловать, {me.data.user.first_name}</h1>
+        <p>
+          Первые 14 дней бесплатно. Добавьте услуги и отправьте клиентам ссылку
+          на запись.
+        </p>
+        <Form
+          label="Создать салон"
+          onDone={me.reload}
+          submit={(d) =>
+            api("/organizations", "POST", {
+              name: str(d, "name"),
+              phone: str(d, "phone"),
+              address: str(d, "address"),
+              timezone: str(d, "timezone"),
+              currency: str(d, "currency"),
+            })
+          }
+        >
+          <Field label="Название салона">
+            <input
+              name="name"
+              required
+              minLength={2}
+              maxLength={100}
+              placeholder="Лапки и хвостики"
+            />
+          </Field>
+          <Field label="Телефон">
+            <input name="phone" type="tel" maxLength={30} />
+          </Field>
+          <Field label="Адрес">
+            <input name="address" maxLength={300} />
+          </Field>
+          <div className="grid two">
+            <Field label="Часовой пояс">
+              <input name="timezone" required defaultValue="Asia/Almaty" />
+            </Field>
+            <Field label="Валюта">
+              <select name="currency">
+                {["KZT", "RUB", "USD", "EUR"].map((v) => (
+                  <option key={v}>{v}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        </Form>
+        {me.data.is_operator && (
+          <button onClick={() => setOperator(true)}>Кабинет оператора</button>
+        )}
+      </main>
+    );
+  const activeOrg =
+    me.data.organizations.find((o) => o.id === orgId) ||
+    me.data.organizations[0];
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Toaster position="top-center" richColors />
-
-        {/* 👇 ИСПРАВЛЕНИЕ: Используем AuthCheck */}
-        <AuthCheck>
-          <Routes>
-            <Route path="/" element={<SelectRolePage />} />
-            <Route path="/select-role" element={<SelectRolePage />} />
-            <Route path="/master/register" element={<MasterRegisterPage />} />
-
-            <Route path="/master" element={<MasterLayout />}>
-              <Route index element={<MasterDashboardPage />} />
-              <Route path="dashboard" element={<MasterDashboardPage />} />
-              <Route path="services" element={<MasterServicesPage />} />
-              <Route path="profile" element={<MasterProfilePage />} />
-              <Route path="clients" element={<MasterClientsPage />} />
-            </Route>
-
-            <Route path="/client/:salonId" element={<ClientLayout />}>
-              <Route index element={<ClientBookingPage />} />
-            </Route>
-
-            <Route path="*" element={<div className="p-10 text-center text-[#8E8E93]">404: Страница не найдена</div>} />
-          </Routes>
-        </AuthCheck>
-      </BrowserRouter>
-    </QueryClientProvider>
+    <Workspace
+      key={activeOrg.id}
+      orgId={activeOrg.id}
+      organizations={me.data.organizations}
+      changeOrg={setOrgId}
+      operator={me.data.is_operator ? () => setOperator(true) : undefined}
+    />
   );
 }
-
-export default App;
+function Workspace({
+  orgId,
+  organizations,
+  changeOrg,
+  operator,
+}: {
+  orgId: string;
+  organizations: Organization[];
+  changeOrg: (id: string) => void;
+  operator?: () => void;
+}) {
+  const state = useLoad(
+    () =>
+      api<{
+        organization: Organization;
+        membership: Member;
+        subscription: Subscription;
+      }>(`/organizations/${orgId}`),
+    [orgId],
+  );
+  const [tab, setTab] = useState("calendar"),
+    [open, setOpen] = useState(false);
+  if (!state.data)
+    return (
+      <main className="welcome">
+        <Load {...state} />
+        <button onClick={state.reload}>Повторить</button>
+      </main>
+    );
+  const { organization: org, membership: member, subscription } = state.data;
+  const ctx = { org, member, subscription, refresh: state.reload };
+  const nav = [
+    { id: "calendar", label: "Календарь", icon: CalendarDays },
+    { id: "clients", label: "Клиенты", icon: Users },
+    { id: "services", label: "Услуги", icon: Scissors },
+    { id: "team", label: "Команда", icon: Users },
+    ...(member.role === "groomer"
+      ? []
+      : [{ id: "reports", label: "Отчёты", icon: ChartNoAxesCombined }]),
+    { id: "profile", label: "Салон и подписка", icon: Settings },
+  ];
+  return (
+    <div className="workspace">
+      <div className="mobile-bar">
+        <span className="brand">
+          <PawPrint /> Grooming CRM
+        </span>
+        <button aria-label="Меню" onClick={() => setOpen(!open)}>
+          <Menu />
+        </button>
+      </div>
+      <aside className={open ? "sidebar open" : "sidebar"}>
+        <a className="brand" href="/">
+          <PawPrint /> Grooming CRM
+        </a>
+        <div className="salon-switch">
+          <span className="avatar">{org.name[0]}</span>
+          <div>
+            {organizations.length > 1 ? (
+              <select
+                aria-label="Компания"
+                value={orgId}
+                onChange={(e) => changeOrg(e.target.value)}
+              >
+                {organizations.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <strong>{org.name}</strong>
+            )}
+            <small>
+              {member.role === "owner"
+                ? "Владелец"
+                : member.role === "admin"
+                  ? "Администратор"
+                  : "Грумер"}
+            </small>
+          </div>
+        </div>
+        <nav>
+          {nav.map((n) => (
+            <button
+              key={n.id}
+              className={tab === n.id ? "active" : ""}
+              onClick={() => {
+                setTab(n.id);
+                setOpen(false);
+              }}
+            >
+              <n.icon size={19} />
+              {n.label}
+            </button>
+          ))}
+          {operator && (
+            <button onClick={operator}>
+              <ShieldCheck size={19} />
+              Оператор
+            </button>
+          )}
+        </nav>
+        <div className="sidebar-bottom">
+          <span
+            className={
+              "badge " + (subscription.active ? "confirmed" : "canceled")
+            }
+          >
+            {subscription.status === "trial"
+              ? "Пробный период"
+              : subscription.active
+                ? "Подписка активна"
+                : "Доступ ограничен"}
+          </span>
+          <small>До {dateTime(subscription.ends_at, org.timezone)}</small>
+          <button onClick={() => setTab("profile")}>
+            Управлять подпиской →
+          </button>
+        </div>
+      </aside>
+      <main className="content">
+        {!subscription.active && (
+          <div className="banner">
+            Подписка закончилась. Доступны просмотр, экспорт и отмена записей.{" "}
+            <button onClick={() => setTab("profile")}>Продлить</button>
+          </div>
+        )}
+        {tab === "calendar" ? (
+          <Dashboard {...ctx} />
+        ) : tab === "clients" ? (
+          <Clients {...ctx} />
+        ) : tab === "services" ? (
+          <Services {...ctx} />
+        ) : tab === "team" ? (
+          <Team {...ctx} />
+        ) : tab === "reports" && member.role !== "groomer" ? (
+          <Analytics {...ctx} />
+        ) : (
+          <Profile {...ctx} />
+        )}
+        <footer>Grooming CRM · Забота начинается с порядка</footer>
+      </main>
+    </div>
+  );
+}
+function Operator() {
+  const [q, setQ] = useState("");
+  const orgs = useLoad(
+    () =>
+      api<
+        (Organization & { trial_ends_at: string; paid_until: string | null })[]
+      >("/operator/organizations?q=" + encodeURIComponent(q)),
+    [q],
+  );
+  return (
+    <>
+      <h1>Компании и подписки</h1>
+      <Field label="Название или ID">
+        <input value={q} onChange={(e) => setQ(e.target.value)} />
+      </Field>
+      <Load {...orgs} />
+      {orgs.data?.map((o) => (
+        <section className="card" key={o.id}>
+          <h2>{o.name}</h2>
+          <p className="muted">{o.id}</p>
+          <p>
+            Пробный период до {dateTime(o.trial_ends_at, o.timezone)}
+            {o.paid_until &&
+              ` · Оплачено до ${dateTime(o.paid_until, o.timezone)}`}
+          </p>
+          <RenewForm orgId={o.id} reload={orgs.reload} />
+        </section>
+      ))}
+    </>
+  );
+}
+function RenewForm({ orgId, reload }: { orgId: string; reload: () => void }) {
+  const [key, setKey] = useState(crypto.randomUUID());
+  return (
+    <Form
+      label="Подтвердить оплату и продлить на 30 дней"
+      onDone={reload}
+      submit={(d) =>
+        api(`/operator/organizations/${orgId}/renew`, "POST", {
+          amount_minor: minor(d, "amount"),
+          reference: str(d, "reference"),
+          request_key: key,
+        })
+      }
+    >
+      <div className="grid two">
+        <Field label="Полученная сумма (валюта тарифа)">
+          <input
+            name="amount"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+            onChange={() => setKey(crypto.randomUUID())}
+          />
+        </Field>
+        <Field label="Номер / подтверждение платежа">
+          <input
+            name="reference"
+            minLength={3}
+            maxLength={300}
+            required
+            onChange={() => setKey(crypto.randomUUID())}
+          />
+        </Field>
+      </div>
+      <label className="check">
+        <input type="checkbox" required />
+        Оплата проверена, продление подтверждаю
+      </label>
+    </Form>
+  );
+}

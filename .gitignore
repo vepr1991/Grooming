@@ -35,3 +35,9 @@ pnpm-debug.log*
 # --- LOGS ---
 logs/
 *.log
+# Local checks and database backups
+.pytest_cache/
+.ruff_cache/
+*.dump
+playwright-report/
+test-results/

@@ -1,18 +1,55 @@
-services:
-  # Наш Python Backend
-  - type: web
-    name: grooming-backend
-    env: docker
-    rootDir: backend  # <--- Самое важное: указываем папку, где лежит код и Dockerfile
-    plan: free        # Используем бесплатный тариф
-
-    # Переменные, которые нужно будет ввести в Dashboard Render'а
+envVarGroups:
+  - name: grooming-pilot
     envVars:
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
+      - key: DATABASE_URL
         sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
-      - key: PORT
-        value: 10000
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: TELEGRAM_BOT_USERNAME
+        sync: false
+      - key: OPERATOR_IDS
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: SUBSCRIPTION_PRICE_MINOR
+        sync: false
+      - key: SUBSCRIPTION_CURRENCY
+        value: KZT
+      - key: PAYMENT_INSTRUCTIONS
+        sync: false
+services:
+  - type: web
+    name: grooming-backend
+    branch: refactor
+    runtime: docker
+    rootDir: backend
+    plan: starter
+    preDeployCommand: python migrate.py
+    healthCheckPath: /health
+    envVars:
+      - fromGroup: grooming-pilot
+  - type: worker
+    name: grooming-crm-worker
+    branch: refactor
+    runtime: docker
+    rootDir: backend
+    plan: starter
+    dockerCommand: python worker.py
+    envVars:
+      - fromGroup: grooming-pilot
+  - type: web
+    name: Grooming_react_front
+    branch: refactor
+    runtime: static
+    rootDir: client
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

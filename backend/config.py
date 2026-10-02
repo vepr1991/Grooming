@@ -1,33 +1,18 @@
+"""Configuration is loaded without connecting to external services at import time."""
+
 import os
-import logging
-from supabase import create_client, Client
-import telebot
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from pathlib import Path
 
-# --- 1. Настройка логирования ---
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger("grooming_api")
+from dotenv import load_dotenv
 
-# --- 2. Переменные окружения ---
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
-BACKEND_URL = os.getenv("BACKEND_URL") # Нужен для вебхуков
-
-# Проверка критических переменных
-if not all([SUPABASE_URL, SUPABASE_KEY, TELEGRAM_BOT_TOKEN]):
-    logger.critical("⚠️ КРИТИЧЕСКАЯ ОШИБКА: Не заданы переменные окружения (SUPABASE_URL, KEY или TOKEN)!")
-
-# --- 3. Инициализация клиентов ---
-# База данных
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# Телеграм бот
-bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-
-# Планировщик задач (для напоминаний)
-scheduler = AsyncIOScheduler()
+load_dotenv(Path(__file__).with_name(".env"))
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "").lstrip("@")
+APP_URL = os.getenv("APP_URL", "http://localhost:5173").rstrip("/")
+OPERATOR_IDS = {int(v) for v in os.getenv("OPERATOR_IDS", "").split(",") if v.strip()}
+AUTH_MAX_AGE = 86400
+SUBSCRIPTION_PRICE_MINOR = int(os.getenv("SUBSCRIPTION_PRICE_MINOR", "0"))
+SUBSCRIPTION_CURRENCY = os.getenv("SUBSCRIPTION_CURRENCY", "KZT")
+PAYMENT_INSTRUCTIONS = os.getenv("PAYMENT_INSTRUCTIONS", "Обратитесь к оператору сервиса для продления.")
