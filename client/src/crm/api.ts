@@ -108,6 +108,8 @@ export const money = (minor: number, currency = "KZT") =>
   new Intl.NumberFormat("ru-RU", {
     style: "currency",
     currency,
+    currencyDisplay: "narrowSymbol",
+    minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(minor / 100);
 export const localDate = (value: string, zone: string) =>

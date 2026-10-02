@@ -1,5 +1,41 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+export function Sheet({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialog.current;
+    element?.showModal();
+    return () => element?.close();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="sheet crm"
+      aria-label={title}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="sheet-heading">
+        <strong>{title}</strong>
+        <button onClick={onClose}>Отмена</button>
+      </div>
+      <div className="sheet-content">{children}</div>
+    </dialog>
+  );
+}
 export function Load({ loading, error }: { loading: boolean; error: string }) {
   return error ? (
     <p className="error" role="alert">

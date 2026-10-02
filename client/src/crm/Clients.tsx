@@ -23,7 +23,7 @@ export function Clients(ctx: Context) {
       <header className="page-heading">
         <div>
           <p className="eyebrow">Знакомые мордочки</p>
-          <h1>Клиенты и питомцы</h1>
+          <h1>Клиенты</h1>
         </div>
         {member.role !== "groomer" && (
           <button

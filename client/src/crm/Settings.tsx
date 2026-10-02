@@ -1,12 +1,14 @@
 import { useState } from "react";
+import { Plus, Scissors, ChevronRight } from "lucide-react";
 import { api, dateTime, localDate, money } from "./api";
 import type { Member, Service } from "./api";
 import type { Context } from "./Dashboard";
-import { Action, Empty, Field, Form, Load } from "./ui";
+import { Action, Empty, Field, Form, Load, Sheet } from "./ui";
 import { useLoad } from "./hooks";
 import { minor, num, str } from "./form-data";
 
 export function Services({ org, member, subscription }: Context) {
+  const [adding, setAdding] = useState(false);
   const services = useLoad(
     () => api<Service[]>(`/organizations/${org.id}/services`),
     [org.id],
@@ -20,17 +22,35 @@ export function Services({ org, member, subscription }: Context) {
     <>
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Прайс-лист салона</p>
           <h1>Услуги</h1>
+          <p className="muted">Ваш прейскурант</p>
         </div>
+        {writable && (
+          <button
+            className="primary icon-button"
+            aria-label="Добавить услугу"
+            onClick={() => setAdding(true)}
+          >
+            <Plus size={24} />
+          </button>
+        )}
       </header>
       <Load {...services} />
       <Load {...members} />
       {services.data?.map((s) => (
         <details key={s.id} className="card">
-          <summary>
-            <strong>{s.title}</strong> · {money(s.price_minor, org.currency)} ·{" "}
-            {s.duration_minutes} мин {!s.active && "· В архиве"}
+          <summary className="service-row">
+            <span className="service-icon">
+              <Scissors size={24} />
+            </span>
+            <span>
+              <strong>{s.title}</strong>
+              <small>
+                {s.duration_minutes} мин {!s.active && "· В архиве"}
+              </small>
+              <b>{money(s.price_minor, org.currency)}</b>
+            </span>
+            <ChevronRight size={18} />
           </summary>
           <ServiceForm
             service={s}
@@ -44,21 +64,26 @@ export function Services({ org, member, subscription }: Context) {
           />
         </details>
       ))}
-      {writable && (
-        <section className="card">
-          <h2>Новая услуга</h2>
-          <ServiceForm
-            key={services.data?.length}
-            members={members.data || []}
-            currency={org.currency}
-            submit={(d) => api(`/organizations/${org.id}/services`, "POST", d)}
-            onDone={services.reload}
-          />
-        </section>
+      {writable && adding && (
+        <Sheet title="Новая услуга" onClose={() => setAdding(false)}>
+          <section className="card">
+            <h2>Новая услуга</h2>
+            <ServiceForm
+              key={services.data?.length}
+              members={members.data || []}
+              currency={org.currency}
+              submit={(d) =>
+                api(`/organizations/${org.id}/services`, "POST", d)
+              }
+              onDone={() => {
+                setAdding(false);
+                services.reload();
+              }}
+            />
+          </section>
+        </Sheet>
       )}
-      {services.data?.length === 0 && !writable && (
-        <Empty>Услуги ещё не добавлены.</Empty>
-      )}
+      {services.data?.length === 0 && <Empty>Услуги ещё не добавлены.</Empty>}
     </>
   );
 }
@@ -432,7 +457,7 @@ export function Profile({ org, member, subscription, refresh }: Context) {
       <header className="page-heading">
         <div>
           <p className="eyebrow">Настройки бизнеса</p>
-          <h1>Салон и подписка</h1>
+          <h1>Профиль</h1>
         </div>
       </header>
       <section className="card">
@@ -620,10 +645,10 @@ export function Analytics({ org }: Context) {
       {stats.data && (
         <div className="stats">
           {[
+            ["receipts_minor", "Получено денег"],
             ["appointments", "Записей"],
             ["completed", "Завершено"],
             ["completed_value_minor", "Стоимость завершённых услуг"],
-            ["receipts_minor", "Получено денег"],
             ["refunds_minor", "Возвращено"],
             ["outstanding_minor", "Долг по завершённым визитам"],
           ].map(([key, label]) => (

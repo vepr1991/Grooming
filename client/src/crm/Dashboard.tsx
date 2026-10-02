@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Plus, RefreshCcw } from "lucide-react";
+import { Calendar } from "./Calendar";
 import {
   api,
   dateTime,
@@ -9,7 +11,7 @@ import {
   zonedISO,
 } from "./api";
 import type { Appointment, Member, Organization, Subscription } from "./api";
-import { Action, Empty, Field, Form, Load } from "./ui";
+import { Action, Empty, Field, Form, Load, Sheet } from "./ui";
 import { useLoad } from "./hooks";
 import { minor, num, str } from "./form-data";
 import { Booking } from "./Booking";
@@ -20,7 +22,14 @@ export type Context = {
   refresh: () => void;
 };
 
-export function Dashboard({ org, member, subscription }: Context) {
+export function Dashboard({
+  org,
+  member,
+  subscription,
+  onReports,
+}: Context & { onReports?: () => void }) {
+  const [view, setView] = useState("list"),
+    [filter, setFilter] = useState("pending");
   const [day, setDay] = useState(
       localDate(new Date().toISOString(), org.timezone),
     ),
@@ -35,107 +44,159 @@ export function Dashboard({ org, member, subscription }: Context) {
     () => api<Member[]>(`/organizations/${org.id}/members`),
     [org.id],
   );
+  const visible = (appointments.data || []).filter(
+    (a) =>
+      view === "calendar" ||
+      (filter === "pending"
+        ? ["pending", "confirmed", "blocked"].includes(a.status)
+        : ["completed", "canceled", "no_show"].includes(a.status)),
+  );
   return (
     <>
       <header className="page-heading">
-        <div>
-          <p className="eyebrow">Ваш рабочий день</p>
-          <h1>Календарь</h1>
-          <p className="muted">{org.timezone}</p>
-        </div>
+        <h1>Записи</h1>
         <div className="actions">
           {member.role !== "groomer" && (
             <button
-              className="primary"
+              className="primary icon-button"
+              aria-label="Добавить запись"
               disabled={!subscription.active}
               onClick={() => {
-                setAdding(!adding);
+                setAdding(true);
                 setBlocking(false);
               }}
             >
-              {adding ? "Закрыть" : "＋ Запись"}
+              <Plus size={24} />
             </button>
           )}
           <button
-            disabled={!subscription.active}
-            onClick={() => {
-              setBlocking(!blocking);
-              setAdding(false);
-            }}
+            className="icon-button"
+            aria-label="Обновить записи"
+            onClick={appointments.reload}
           >
-            Перерыв
+            <RefreshCcw size={20} />
           </button>
         </div>
       </header>
-      {adding && (
-        <Booking
-          orgId={org.id}
-          internal
-          onDone={() => {
-            setAdding(false);
-            appointments.reload();
-          }}
+      <div className="segmented" aria-label="Вид записей">
+        <button
+          className={view === "list" ? "active" : ""}
+          onClick={() => setView("list")}
+        >
+          Список
+        </button>
+        <button
+          className={view === "calendar" ? "active" : ""}
+          onClick={() => setView("calendar")}
+        >
+          Календарь
+        </button>
+        {onReports && <button onClick={onReports}>Финансы</button>}
+      </div>
+      {view === "calendar" && (
+        <Calendar
+          key={day.slice(0, 7)}
+          day={day}
+          today={localDate(new Date().toISOString(), org.timezone)}
+          onChange={setDay}
+          onBlock={() => setBlocking(true)}
+          writable={subscription.active}
         />
       )}
-      {blocking && (
-        <section className="card">
-          <h2>Заблокировать время</h2>
-          <Form
+      {view === "list" && (
+        <div className="segmented" aria-label="Статус записей">
+          <button
+            className={filter === "pending" ? "active" : ""}
+            onClick={() => setFilter("pending")}
+          >
+            Ожидают
+          </button>
+          <button
+            className={filter === "history" ? "active" : ""}
+            onClick={() => setFilter("history")}
+          >
+            История
+          </button>
+        </div>
+      )}
+      {adding && (
+        <Sheet title="Новая запись" onClose={() => setAdding(false)}>
+          <Booking
+            orgId={org.id}
+            internal
             onDone={() => {
-              setBlocking(false);
+              setAdding(false);
               appointments.reload();
             }}
-            submit={(d) =>
-              api(`/organizations/${org.id}/blocks`, "POST", {
-                member_id: str(d, "member"),
-                start_time: zonedISO(
-                  str(d, "day"),
-                  str(d, "time"),
-                  org.timezone,
-                ),
-                duration_minutes: num(d, "duration"),
-                reason: str(d, "reason"),
-              })
-            }
-          >
-            <div className="grid two">
-              <Field label="Сотрудник">
-                <select name="member" required>
-                  {members.data
-                    ?.filter(
-                      (m) =>
-                        m.active &&
-                        (member.role !== "groomer" || m.id === member.id),
-                    )
-                    .map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                </select>
-              </Field>
-              <Field label="Дата">
-                <input name="day" type="date" required defaultValue={day} />
-              </Field>
-              <Field label="Начало">
-                <input name="time" type="time" required defaultValue="13:00" />
-              </Field>
-              <Field label="Минут">
-                <input
-                  name="duration"
-                  type="number"
-                  required
-                  min={5}
-                  max={1440}
-                  defaultValue={60}
-                />
-              </Field>
-              <Field label="Причина">
-                <input name="reason" defaultValue="Перерыв" maxLength={200} />
-              </Field>
-            </div>
-          </Form>
-        </section>
+          />
+        </Sheet>
+      )}
+      {blocking && (
+        <Sheet title="Заблокировать время" onClose={() => setBlocking(false)}>
+          <section className="card">
+            <h2>Заблокировать время</h2>
+            <Form
+              onDone={() => {
+                setBlocking(false);
+                appointments.reload();
+              }}
+              submit={(d) =>
+                api(`/organizations/${org.id}/blocks`, "POST", {
+                  member_id: str(d, "member"),
+                  start_time: zonedISO(
+                    str(d, "day"),
+                    str(d, "time"),
+                    org.timezone,
+                  ),
+                  duration_minutes: num(d, "duration"),
+                  reason: str(d, "reason"),
+                })
+              }
+            >
+              <div className="grid two">
+                <Field label="Сотрудник">
+                  <select name="member" required>
+                    {members.data
+                      ?.filter(
+                        (m) =>
+                          m.active &&
+                          (member.role !== "groomer" || m.id === member.id),
+                      )
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label="Дата">
+                  <input name="day" type="date" required defaultValue={day} />
+                </Field>
+                <Field label="Начало">
+                  <input
+                    name="time"
+                    type="time"
+                    required
+                    defaultValue="13:00"
+                  />
+                </Field>
+                <Field label="Минут">
+                  <input
+                    name="duration"
+                    type="number"
+                    required
+                    min={5}
+                    max={1440}
+                    defaultValue={60}
+                  />
+                </Field>
+                <Field label="Причина">
+                  <input name="reason" defaultValue="Перерыв" maxLength={200} />
+                </Field>
+              </div>
+            </Form>
+          </section>
+        </Sheet>
       )}
       <div className="toolbar">
         <Field label="Дата календаря">
@@ -145,18 +206,22 @@ export function Dashboard({ org, member, subscription }: Context) {
             onChange={(e) => setDay(e.target.value)}
           />
         </Field>
-        <button onClick={appointments.reload}>Обновить</button>
+        {view === "list" && (
+          <button
+            onClick={() => setBlocking(true)}
+            disabled={!subscription.active}
+          >
+            Перерыв
+          </button>
+        )}
         <span className="muted">{appointments.data?.length || 0} записей</span>
       </div>
       <Load {...appointments} />
-      {appointments.data?.length === 0 && (
-        <Empty>
-          На этот день записей нет. Поделитесь ссылкой на запись или добавьте
-          визит вручную.
-        </Empty>
+      {appointments.data && visible.length === 0 && (
+        <Empty>В этом списке на выбранный день записей нет.</Empty>
       )}
       <div className="appointments">
-        {appointments.data?.map((a) => (
+        {visible.map((a) => (
           <AppointmentCard
             key={a.id + ":" + a.version + ":" + a.paid_minor}
             app={a}

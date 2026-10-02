@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import {
-  CalendarDays,
+  LayoutDashboard,
+  User,
+  ChevronRight,
   Users,
   Scissors,
-  Settings,
-  ChartNoAxesCombined,
   PawPrint,
-  Menu,
   ShieldCheck,
 } from "lucide-react";
 import { api, dateTime, tg } from "./crm/api";
@@ -57,34 +56,49 @@ function Authenticated({ start }: { start: string }) {
   const me = useLoad(() => api<Me>("/me"), []);
   const [orgId, setOrgId] = useState(""),
     [operator, setOperator] = useState(false),
-    [inviteDone, setInviteDone] = useState(false);
+    [inviteDone, setInviteDone] = useState(false),
+    [clientHint, setClientHint] = useState(false);
   const config = useLoad(() => api<{ bot_username: string }>("/config"), []);
   if (!tg()?.initData)
     return (
-      <main className="welcome">
-        <div className="logo-mark">
-          <PawPrint size={38} />
-        </div>
-        <p className="eyebrow">Больше заботы. Меньше рутины.</p>
-        <h1>
-          Ваш салон.
-          <br />
-          Всё под рукой.
-        </h1>
-        <p>Клиенты, питомцы и расписание команды — в одном кабинете.</p>
-        {config.data?.bot_username ? (
-          <a
-            className="primary link-button"
-            href={`https://t.me/${config.data.bot_username}?startapp`}
-          >
-            Открыть в Telegram
-          </a>
-        ) : (
-          <p className="muted">
-            Откройте Mini App через Telegram-бота салона. Имя бота на сервере
-            ещё не настроено.
+      <main className="welcome role-screen">
+        <h1>Grooming App</h1>
+        <p className="muted">
+          Удобная запись для клиентов и управление для мастеров
+        </p>
+        <button
+          className="role-card"
+          disabled={!config.data?.bot_username}
+          onClick={() => {
+            if (config.data?.bot_username)
+              window.location.href = `https://t.me/${config.data.bot_username}`;
+          }}
+        >
+          <span className="role-icon">
+            <Scissors size={28} />
+          </span>
+          <span>
+            <strong>Я Мастер</strong>
+            <small>Создать салон и расписание</small>
+          </span>
+          <ChevronRight size={20} />
+        </button>
+        <button className="role-card" onClick={() => setClientHint(true)}>
+          <span className="role-icon client">
+            <User size={28} />
+          </span>
+          <span>
+            <strong>Я Клиент</strong>
+            <small>У меня есть ссылка</small>
+          </span>
+          <ChevronRight size={20} />
+        </button>
+        {clientHint && (
+          <p className="muted" role="status">
+            Перейдите по ссылке от вашего мастера, чтобы записаться
           </p>
         )}
+        <p className="muted">Вход для мастеров через Telegram</p>
       </main>
     );
   if (!me.data)
@@ -126,7 +140,7 @@ function Authenticated({ start }: { start: string }) {
   if (me.data.organizations.length === 0)
     return (
       <main className="welcome register">
-        <p className="eyebrow">Начнём с вашего салона</p>
+        <p className="eyebrow">Создайте свой салон</p>
         <h1>Добро пожаловать, {me.data.user.first_name}</h1>
         <p>
           Первые 14 дней бесплатно. Добавьте услуги и отправьте клиентам ссылку
@@ -212,7 +226,7 @@ function Workspace({
     [orgId],
   );
   const [tab, setTab] = useState("calendar"),
-    [open, setOpen] = useState(false);
+    [profileTab, setProfileTab] = useState("profile");
   if (!state.data)
     return (
       <main className="welcome">
@@ -223,120 +237,129 @@ function Workspace({
   const { organization: org, membership: member, subscription } = state.data;
   const ctx = { org, member, subscription, refresh: state.reload };
   const nav = [
-    { id: "calendar", label: "Календарь", icon: CalendarDays },
-    { id: "clients", label: "Клиенты", icon: Users },
+    { id: "calendar", label: "Записи", icon: LayoutDashboard },
     { id: "services", label: "Услуги", icon: Scissors },
-    { id: "team", label: "Команда", icon: Users },
-    ...(member.role === "groomer"
-      ? []
-      : [{ id: "reports", label: "Отчёты", icon: ChartNoAxesCombined }]),
-    { id: "profile", label: "Салон и подписка", icon: Settings },
+    { id: "clients", label: "Клиенты", icon: Users },
+    { id: "profile", label: "Профиль", icon: User },
   ];
   return (
     <div className="workspace">
-      <div className="mobile-bar">
-        <span className="brand">
-          <PawPrint /> Grooming CRM
-        </span>
-        <button aria-label="Меню" onClick={() => setOpen(!open)}>
-          <Menu />
-        </button>
-      </div>
-      <aside className={open ? "sidebar open" : "sidebar"}>
-        <a className="brand" href="/">
-          <PawPrint /> Grooming CRM
-        </a>
-        <div className="salon-switch">
-          <span className="avatar">{org.name[0]}</span>
-          <div>
-            {organizations.length > 1 ? (
-              <select
-                aria-label="Компания"
-                value={orgId}
-                onChange={(e) => changeOrg(e.target.value)}
-              >
-                {organizations.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <strong>{org.name}</strong>
-            )}
-            <small>
-              {member.role === "owner"
-                ? "Владелец"
-                : member.role === "admin"
-                  ? "Администратор"
-                  : "Грумер"}
-            </small>
-          </div>
-        </div>
-        <nav>
-          {nav.map((n) => (
-            <button
-              key={n.id}
-              className={tab === n.id ? "active" : ""}
-              onClick={() => {
-                setTab(n.id);
-                setOpen(false);
-              }}
-            >
-              <n.icon size={19} />
-              {n.label}
-            </button>
-          ))}
-          {operator && (
-            <button onClick={operator}>
-              <ShieldCheck size={19} />
-              Оператор
-            </button>
-          )}
-        </nav>
-        <div className="sidebar-bottom">
-          <span
-            className={
-              "badge " + (subscription.active ? "confirmed" : "canceled")
-            }
-          >
-            {subscription.status === "trial"
-              ? "Пробный период"
-              : subscription.active
-                ? "Подписка активна"
-                : "Доступ ограничен"}
-          </span>
-          <small>До {dateTime(subscription.ends_at, org.timezone)}</small>
-          <button onClick={() => setTab("profile")}>
-            Управлять подпиской →
-          </button>
-        </div>
-      </aside>
       <main className="content">
+        {organizations.length > 1 && (
+          <select
+            aria-label="Компания"
+            value={orgId}
+            onChange={(e) => changeOrg(e.target.value)}
+          >
+            {organizations.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        )}
         {!subscription.active && (
           <div className="banner">
-            Подписка закончилась. Доступны просмотр, экспорт и отмена записей.{" "}
-            <button onClick={() => setTab("profile")}>Продлить</button>
+            Подписка закончилась. Доступны просмотр, экспорт и отмена записей.
+            <button
+              onClick={() => {
+                setTab("profile");
+                setProfileTab("profile");
+              }}
+            >
+              Продлить
+            </button>
+          </div>
+        )}
+        {tab === "profile" && (
+          <div className="profile-tools">
+            <div className="salon-switch">
+              <span className="avatar">
+                <Scissors size={24} />
+              </span>
+              <div>
+                <strong>{org.name}</strong>
+                <small>
+                  {member.role === "owner"
+                    ? "Владелец"
+                    : member.role === "admin"
+                      ? "Администратор"
+                      : "Грумер"}
+                </small>
+              </div>
+            </div>
+            <div className="segmented" aria-label="Настройки салона">
+              <button
+                className={profileTab === "profile" ? "active" : ""}
+                onClick={() => setProfileTab("profile")}
+              >
+                Салон
+              </button>
+              <button
+                className={profileTab === "team" ? "active" : ""}
+                onClick={() => setProfileTab("team")}
+              >
+                Команда
+              </button>
+              {member.role !== "groomer" && (
+                <button
+                  className={profileTab === "reports" ? "active" : ""}
+                  onClick={() => setProfileTab("reports")}
+                >
+                  Финансы
+                </button>
+              )}
+            </div>
+            {operator && (
+              <button className="operator-link" onClick={operator}>
+                <ShieldCheck size={17} /> Кабинет оператора
+              </button>
+            )}
           </div>
         )}
         {tab === "calendar" ? (
-          <Dashboard {...ctx} />
+          <Dashboard
+            {...ctx}
+            onReports={
+              member.role !== "groomer"
+                ? () => {
+                    setTab("profile");
+                    setProfileTab("reports");
+                  }
+                : undefined
+            }
+          />
         ) : tab === "clients" ? (
           <Clients {...ctx} />
         ) : tab === "services" ? (
           <Services {...ctx} />
-        ) : tab === "team" ? (
+        ) : profileTab === "team" ? (
           <Team {...ctx} />
-        ) : tab === "reports" && member.role !== "groomer" ? (
+        ) : profileTab === "reports" && member.role !== "groomer" ? (
           <Analytics {...ctx} />
         ) : (
           <Profile {...ctx} />
         )}
-        <footer>Grooming CRM · Забота начинается с порядка</footer>
       </main>
+      <nav className="bottom-nav" aria-label="Основная навигация">
+        <div>
+          {nav.map((n) => (
+            <button
+              key={n.id}
+              className={tab === n.id ? "active" : ""}
+              aria-current={tab === n.id ? "page" : undefined}
+              onClick={() => setTab(n.id)}
+            >
+              <n.icon size={26} strokeWidth={tab === n.id ? 2.5 : 2} />
+              <span>{n.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
     </div>
   );
 }
+
 function Operator() {
   const [q, setQ] = useState("");
   const orgs = useLoad(

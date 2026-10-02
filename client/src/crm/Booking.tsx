@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronLeft } from "lucide-react";
 import { api, dateTime, localDate, localTime, money, tg } from "./api";
 import type { Storefront } from "./api";
 import { Field, Form, Load } from "./ui";
@@ -35,6 +36,7 @@ function BookingForm({
   onDone?: () => void;
 }) {
   const { organization: org, services, members } = store;
+  const [step, setStep] = useState(0);
   const [selected, setSelected] = useState<string[]>([]),
     [member, setMember] = useState(""),
     [day, setDay] = useState(localDate(new Date().toISOString(), org.timezone)),
@@ -115,7 +117,16 @@ function BookingForm({
     );
   return (
     <div className="booking">
-      <section className="card">
+      {!internal && step > 0 && (
+        <header className="booking-heading">
+          <button aria-label="Назад" onClick={() => setStep(step - 1)}>
+            <ChevronLeft size={28} />
+          </button>
+          <strong>{step === 1 ? "Время" : "Детали"}</strong>
+          <span />
+        </header>
+      )}
+      <section className="card" hidden={!internal && step !== 0}>
         <p className="eyebrow">{internal ? "Новая запись" : "Онлайн-запись"}</p>
         <h1>{org.name}</h1>
         <p className="muted">
@@ -123,8 +134,8 @@ function BookingForm({
         </p>
         <p className="muted">Время салона: {org.timezone}</p>
       </section>
-      <section className="card">
-        <h2>1. Выберите услуги</h2>
+      <section className="card" hidden={!internal && step !== 0}>
+        <h2>Услуги</h2>
         {services.length === 0 && <p>Салон ещё не добавил услуги.</p>}
         <div className="service-list">
           {services.map((s) => (
@@ -155,8 +166,8 @@ function BookingForm({
           ))}
         </div>
       </section>
-      <section className="card">
-        <h2>2. Мастер и время</h2>
+      <section className="card" hidden={!internal && step !== 1}>
+        <h2>Мастер и время</h2>
         <div className="grid two">
           <Field label="Грумер">
             <select
@@ -212,8 +223,8 @@ function BookingForm({
           <p className="muted">Нет свободного времени. Выберите другую дату.</p>
         )}
       </section>
-      <section className="card">
-        <h2>3. Клиент и питомец</h2>
+      <section className="card" hidden={!internal && step !== 2}>
+        <h2>Клиент и питомец</h2>
         <Form
           label={internal ? "Создать запись" : "Отправить заявку"}
           disabled={!slot || !slots.data?.some((s) => s.start_time === slot)}
@@ -291,6 +302,21 @@ function BookingForm({
           )}
         </Form>
       </section>
+      {!internal && step < 2 && (
+        <button
+          className="primary booking-next"
+          disabled={
+            step === 0
+              ? !selected.length
+              : !slot || !slots.data?.some((s) => s.start_time === slot)
+          }
+          onClick={() => setStep(step + 1)}
+        >
+          {step === 0
+            ? `Выбрать время · ${money(total, org.currency)}`
+            : "Продолжить"}
+        </button>
+      )}
     </div>
   );
 }
